@@ -4,6 +4,9 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading;
+using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.Windows.Forms;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Diagnostics;
@@ -11,14 +14,42 @@ using System.Diagnostics;
 namespace ApexWheel
 {
     // =========================================================================
-    // 1. ViGEmBus Direct Driver Interface (Xbox 360 Virtual Controller)
+    // 1. Gyropad Signature Dark-Purple / Neon F1 Theme
+    // =========================================================================
+    public static class Theme
+    {
+        public static readonly Color Bg          = Color.FromArgb(11, 9, 16);          // Pitch dark
+        public static readonly Color Surface     = Color.FromArgb(26, 22, 40);         // #1A1628 Dark purple
+        public static readonly Color SurfaceHi   = Color.FromArgb(36, 30, 56);         // #241E38 Highlight
+        public static readonly Color Stroke      = Color.FromArgb(50, 40, 75);         // Border
+        public static readonly Color Ink         = Color.FromArgb(245, 240, 255);      // Pure white/ink
+        public static readonly Color Dim         = Color.FromArgb(170, 160, 190);      // Dim gray
+        public static readonly Color Faint       = Color.FromArgb(110, 100, 130);      // Faint
+        public static readonly Color Accent      = Color.FromArgb(168, 85, 247);       // #A855F7 Vibrant Purple
+        public static readonly Color AccentDeep  = Color.FromArgb(124, 58, 237);       // #7C3AED
+        public static readonly Color Throttle    = Color.FromArgb(168, 85, 247);       // Purple Gas
+        public static readonly Color Brake       = Color.FromArgb(255, 61, 110);       // #FF3D6E Neon Pink/Red Brake
+        public static readonly Color Good        = Color.FromArgb(0, 230, 118);        // Green
+        public static readonly Color Warn        = Color.FromArgb(255, 214, 0);        // Yellow
+        public static readonly Color F1Red       = Color.FromArgb(225, 6, 0);          // F1 Red
+
+        public static readonly Font H1      = new Font("Segoe UI", 16f, FontStyle.Bold);
+        public static readonly Font Title   = new Font("Segoe UI", 12f, FontStyle.Bold);
+        public static readonly Font Body    = new Font("Segoe UI", 9.5f, FontStyle.Regular);
+        public static readonly Font BodyB   = new Font("Segoe UI", 9.5f, FontStyle.Bold);
+        public static readonly Font Small   = new Font("Segoe UI", 8.5f, FontStyle.Regular);
+        public static readonly Font Mono    = new Font("Consolas", 9.5f, FontStyle.Regular);
+        public static readonly Font MonoB   = new Font("Consolas", 14f, FontStyle.Bold);
+    }
+
+    // =========================================================================
+    // 2. ViGEmBus Direct Driver Interface (Xbox 360 Virtual Controller)
     // =========================================================================
     public class ViGEmBridge
     {
         private static readonly Guid BusGuid = new Guid("96e42b22-f5e9-42f8-b043-ed0f932f014f");
         private const uint IOCTL_PLUGIN_TARGET = 0x2aa004;
         private const uint IOCTL_UNPLUG_TARGET = 0x2aa008;
-        private const uint IOCTL_CHECK_VERSION = 0x2aa00c;
         private const uint IOCTL_WAIT_READY    = 0x2aa010;
         private const uint IOCTL_XUSB_SUBMIT   = 0x2aa808;
 
@@ -134,7 +165,7 @@ namespace ApexWheel
             string path = FindBus();
             if (string.IsNullOrEmpty(path))
             {
-                Status = "ViGEmBus driver not found. Run drivers\\ViGEmBus.exe first.";
+                Status = "ViGEmBus driver not installed.";
                 Available = false;
                 return false;
             }
@@ -148,7 +179,7 @@ namespace ApexWheel
             }
 
             Available = true;
-            Status = "ViGEmBus driver connected";
+            Status = "ViGEmBus ready";
             return true;
         }
 
@@ -165,14 +196,14 @@ namespace ApexWheel
             int returned;
             if (!DeviceIoControl(_bus, IOCTL_PLUGIN_TARGET, plugReq, plugReq.Length, plugReq, plugReq.Length, out returned, IntPtr.Zero))
             {
-                Status = "Failed to plugin virtual Xbox 360 controller.";
+                Status = "Failed to plug virtual Xbox 360 controller.";
                 return false;
             }
 
             _serial = BitConverter.ToInt32(plugReq, 4);
             WaitReady();
             Plugged = true;
-            Status = string.Format("Virtual Xbox 360 controller plugged (Serial #{0})", _serial);
+            Status = string.Format("Xbox 360 Controller Active (Serial #{0})", _serial);
             return true;
         }
 
@@ -213,17 +244,6 @@ namespace ApexWheel
         public bool Feed(double lx, double ly, double rx, double ry, double lt, double rt, ushort buttons)
         {
             if (!Plugged || _bus == INVALID) return false;
-
-            // XUSB Submit Packet:
-            // [0..3]:   Size = 20
-            // [4..7]:   Serial
-            // [8..9]:   wButtons (ushort)
-            // [10]:     bLeftTrigger (byte 0..255)
-            // [11]:     bRightTrigger (byte 0..255)
-            // [12..13]: sThumbLX (short)
-            // [14..15]: sThumbLY (short)
-            // [16..17]: sThumbRX (short)
-            // [18..19]: sThumbRY (short)
 
             Put32(_report, 0, 20);
             Put32(_report, 4, _serial);
@@ -269,13 +289,13 @@ namespace ApexWheel
     }
 
     // =========================================================================
-    // 2. F1 25 / F1 24 UDP Telemetry Engine (Port 20777)
+    // 3. F1 25 UDP Telemetry Engine (Port 20777)
     // =========================================================================
     public class F1TelemetryData
     {
         public bool Active = false;
         public int SpeedKmh = 0;
-        public int Gear = 0; // -1: R, 0: N, 1..8
+        public int Gear = 0;
         public int EngineRPM = 0;
         public int MaxRPM = 13500;
         public int RevLightsPercent = 0;
@@ -283,38 +303,24 @@ namespace ApexWheel
         public bool DrsAllowed = false;
         public bool DrsActive = false;
         public float ErsPercent = 100f;
-        public int ErsMode = 0; // 0=None, 1=Medium, 2=Hotlap, 3=Overtake
+        public int ErsMode = 0;
         public int EngineTemp = 90;
-        public int[] TyreTemps = new int[] { 90, 90, 90, 90 }; // RL, RR, FL, FR
+        public int[] TyreTemps = new int[] { 90, 90, 90, 90 };
         public int BrakeBias = 56;
         public bool PitLimiter = false;
-        public int FiaFlag = 0; // -1: none, 1: green, 2: blue, 3: yellow
+        public int FiaFlag = 0;
         public float CurrentLapTime = 0f;
         public int Position = 1;
-        public DateTime LastPacketTime = DateTime.MinValue;
 
         public string ToJson()
         {
             return string.Format(
                 "{{\"active\":{0},\"speed\":{1},\"gear\":{2},\"rpm\":{3},\"maxRpm\":{4},\"revPercent\":{5},\"revBits\":{6},\"drsAllowed\":{7},\"drsActive\":{8},\"ers\":{9:0.0},\"ersMode\":{10},\"engineTemp\":{11},\"tyres\":[{12},{13},{14},{15}],\"brakeBias\":{16},\"pitLimiter\":{17},\"fiaFlag\":{18},\"lapTime\":{19:0.00},\"position\":{20}}}",
-                Active ? "true" : "false",
-                SpeedKmh,
-                Gear,
-                EngineRPM,
-                MaxRPM,
-                RevLightsPercent,
-                RevLightsBitValue,
-                DrsAllowed ? "true" : "false",
-                DrsActive ? "true" : "false",
-                ErsPercent,
-                ErsMode,
-                EngineTemp,
+                Active ? "true" : "false", SpeedKmh, Gear, EngineRPM, MaxRPM,
+                RevLightsPercent, RevLightsBitValue, DrsAllowed ? "true" : "false",
+                DrsActive ? "true" : "false", ErsPercent, ErsMode, EngineTemp,
                 TyreTemps[0], TyreTemps[1], TyreTemps[2], TyreTemps[3],
-                BrakeBias,
-                PitLimiter ? "true" : "false",
-                FiaFlag,
-                CurrentLapTime,
-                Position
+                BrakeBias, PitLimiter ? "true" : "false", FiaFlag, CurrentLapTime, Position
             );
         }
     }
@@ -326,30 +332,23 @@ namespace ApexWheel
         private bool _running;
         public readonly F1TelemetryData Data = new F1TelemetryData();
 
-        public void Start(int port = 20777)
+        public void Start(int port)
         {
             try
             {
                 _udp = new UdpClient(port);
                 _running = true;
-                _thread = new Thread(ListenLoop) { IsBackground = true };
+                _thread = new Thread(ListenLoop);
+                _thread.IsBackground = true;
                 _thread.Start();
-                Console.WriteLine("[Telemetry] F1 UDP Telemetry listening on port " + port);
             }
-            catch (Exception ex)
-            {
-                Console.WriteLine("[Telemetry] Failed to bind F1 port " + port + ": " + ex.Message);
-            }
+            catch { }
         }
 
         public void Stop()
         {
             _running = false;
-            if (_udp != null)
-            {
-                _udp.Close();
-                _udp = null;
-            }
+            if (_udp != null) { _udp.Close(); _udp = null; }
         }
 
         private void ListenLoop()
@@ -362,57 +361,36 @@ namespace ApexWheel
                     byte[] packet = _udp.Receive(ref sender);
                     if (packet == null || packet.Length < 24) continue;
 
-                    // Parse F1 Header
-                    // Header structure (2023/2024/2025):
-                    // [0..1]  m_packetFormat (uint16) e.g. 2024, 2025
-                    // [2]     m_gameYear (uint8)
-                    // [3]     m_gameMajorVersion
-                    // [4]     m_gameMinorVersion
-                    // [5]     m_packetVersion
-                    // [6]     m_packetId (uint8)
-                    // [7..14] m_sessionUID (uint64)
-                    // [15..18] m_sessionTime (float)
-                    // [19..22] m_frameIdentifier (uint32)
-                    // [23]    m_playerCarIndex (uint8) (in 2023/2024/2025 it's at offset 27 or 23 depending on header size)
-
                     ushort packetFormat = BitConverter.ToUInt16(packet, 0);
                     int headerSize = (packetFormat >= 2023) ? 29 : 24;
                     if (packet.Length < headerSize) continue;
 
                     byte packetId = packet[6];
-                    byte playerIndex = packet[headerSize - 2]; // Player car index
+                    byte playerIndex = packet[headerSize - 2];
 
                     Data.Active = true;
-                    Data.LastPacketTime = DateTime.UtcNow;
 
-                    if (packetId == 6) // Car Telemetry Packet
+                    if (packetId == 6) // Car Telemetry
                     {
-                        // Each car's telemetry data size is ~60 bytes
-                        // Offset: headerSize + playerIndex * 60
                         int carOffset = headerSize + (playerIndex * 60);
                         if (packet.Length >= carOffset + 50)
                         {
                             Data.SpeedKmh = BitConverter.ToUInt16(packet, carOffset);
-                            // packet[carOffset + 8]: clutch
-                            Data.Gear = (sbyte)packet[carOffset + 9]; // sbyte gear: -1 (R), 0 (N), 1..8
+                            Data.Gear = (sbyte)packet[carOffset + 9];
                             Data.EngineRPM = BitConverter.ToUInt16(packet, carOffset + 10);
                             Data.DrsActive = packet[carOffset + 12] == 1;
                             Data.RevLightsPercent = packet[carOffset + 13];
                             Data.RevLightsBitValue = BitConverter.ToUInt16(packet, carOffset + 14);
 
-                            // Brakes temp: [16..23] (4 x uint16)
-                            // Tyres surface temp: [24..27] (4 x uint8)
                             Data.TyreTemps[0] = packet[carOffset + 24]; // RL
                             Data.TyreTemps[1] = packet[carOffset + 25]; // RR
                             Data.TyreTemps[2] = packet[carOffset + 26]; // FL
                             Data.TyreTemps[3] = packet[carOffset + 27]; // FR
-
                             Data.EngineTemp = BitConverter.ToUInt16(packet, carOffset + 32);
                         }
                     }
-                    else if (packetId == 7) // Car Status Packet
+                    else if (packetId == 7) // Car Status
                     {
-                        // Size ~55 bytes per car
                         int carOffset = headerSize + (playerIndex * 55);
                         if (packet.Length >= carOffset + 45)
                         {
@@ -423,7 +401,6 @@ namespace ApexWheel
                             Data.DrsAllowed = packet[carOffset + 20] == 1;
                             Data.FiaFlag = (sbyte)packet[carOffset + 24];
 
-                            // ERS: m_ersStoreEnergy is float at offset ~36 (4,000,000 Joules max)
                             float ersJoules = BitConverter.ToSingle(packet, carOffset + 36);
                             Data.ErsPercent = Math.Max(0f, Math.Min(100f, (ersJoules / 4000000f) * 100f));
                             Data.ErsMode = packet[carOffset + 40];
@@ -440,16 +417,13 @@ namespace ApexWheel
                         }
                     }
                 }
-                catch
-                {
-                    // Ignore packet parsing hiccups or network disconnects
-                }
+                catch { }
             }
         }
     }
 
     // =========================================================================
-    // 3. High-Speed Phone Input Receiver (UDP Port 8081)
+    // 4. High-Speed Phone Input Receiver (UDP Port 8081)
     // =========================================================================
     public class PhoneInputReceiver
     {
@@ -466,7 +440,6 @@ namespace ApexWheel
         public long PacketsReceived { get; private set; }
         public DateTime LastInputTime { get; private set; }
 
-        // Steering settings
         public double SteeringLockAngle { get; set; }
         public double Deadzone { get; set; }
         public double Linearity { get; set; }
@@ -480,30 +453,23 @@ namespace ApexWheel
             Linearity = 1.0;
         }
 
-        public void Start(int port = 8081)
+        public void Start(int port)
         {
             try
             {
                 _udp = new UdpClient(port);
                 _running = true;
-                _thread = new Thread(ListenLoop) { IsBackground = true };
+                _thread = new Thread(ListenLoop);
+                _thread.IsBackground = true;
                 _thread.Start();
-                Console.WriteLine("[PhoneReceiver] High-speed Input listener on port " + port);
             }
-            catch (Exception ex)
-            {
-                Console.WriteLine("[PhoneReceiver] Failed to bind port " + port + ": " + ex.Message);
-            }
+            catch { }
         }
 
         public void Stop()
         {
             _running = false;
-            if (_udp != null)
-            {
-                _udp.Close();
-                _udp = null;
-            }
+            if (_udp != null) { _udp.Close(); _udp = null; }
         }
 
         private void ListenLoop()
@@ -515,23 +481,15 @@ namespace ApexWheel
                 {
                     byte[] bytes = _udp.Receive(ref remote);
                     if (bytes == null || bytes.Length == 0) continue;
-
                     string msg = Encoding.ASCII.GetString(bytes);
                     ProcessMessage(msg);
                 }
-                catch
-                {
-                    // ignore
-                }
+                catch { }
             }
         }
 
         public void ProcessMessage(string msg)
         {
-            // Message protocol:
-            // "APEX:<seq>:<steerAngleDeg>:<throttle 0..1>:<brake 0..1>:<clutch 0..1>:<buttonsMask>"
-            // Or simplified: "IN:<steerNorm>:<throttle>:<brake>:<buttons>"
-
             if (string.IsNullOrEmpty(msg)) return;
 
             string[] parts = msg.Split(':');
@@ -545,7 +503,6 @@ namespace ApexWheel
 
             if (parts[0] == "APEX")
             {
-                // Format: APEX:seq:angle:gas:brake:clutch:buttons
                 double angleDeg = 0.0;
                 double.TryParse(parts[2], System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out angleDeg);
                 double.TryParse(parts[3], System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out rawGas);
@@ -553,50 +510,518 @@ namespace ApexWheel
                 if (parts.Length > 5) double.TryParse(parts[5], System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out rawClutch);
                 if (parts.Length > 6) ushort.TryParse(parts[6], out btnMask);
 
-                // Convert steering angle in degrees to normalized [-1.0 .. 1.0]
                 double halfLock = SteeringLockAngle / 2.0;
                 rawSteer = Math.Max(-1.0, Math.Min(1.0, angleDeg / halfLock));
             }
             else if (parts[0] == "IN")
             {
-                // Format: IN:steerNorm:gas:brake:buttons
                 double.TryParse(parts[1], System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out rawSteer);
                 double.TryParse(parts[2], System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out rawGas);
                 double.TryParse(parts[3], System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out rawBrake);
                 if (parts.Length > 4) ushort.TryParse(parts[4], out btnMask);
             }
 
-            // Apply deadzone & linearity
-            double finalSteer = ApplySteeringCurve(rawSteer);
-            double finalGas = Math.Max(0.0, Math.Min(1.0, rawGas));
-            double finalBrake = Math.Max(0.0, Math.Min(1.0, rawBrake));
+            // Apply deadzone & curve
+            if (Math.Abs(rawSteer) < Deadzone) rawSteer = 0.0;
+            else
+            {
+                double sign = Math.Sign(rawSteer);
+                double abs = (Math.Abs(rawSteer) - Deadzone) / (1.0 - Deadzone);
+                if (abs > 1.0) abs = 1.0;
+                rawSteer = sign * Math.Pow(abs, Linearity);
+            }
 
-            Steer = finalSteer;
-            Throttle = finalGas;
-            Brake = finalBrake;
+            Steer = rawSteer;
+            Throttle = Math.Max(0.0, Math.Min(1.0, rawGas));
+            Brake = Math.Max(0.0, Math.Min(1.0, rawBrake));
             Clutch = rawClutch;
             Buttons = btnMask;
             PacketsReceived++;
             LastInputTime = DateTime.UtcNow;
 
-            // Feed directly to ViGEm virtual Xbox 360 controller
             _bridge.Feed(Steer, 0.0, 0.0, 0.0, Brake, Throttle, Buttons);
-        }
-
-        private double ApplySteeringCurve(double input)
-        {
-            if (Math.Abs(input) < Deadzone) return 0.0;
-            double sign = Math.Sign(input);
-            double abs = (Math.Abs(input) - Deadzone) / (1.0 - Deadzone);
-            if (abs > 1.0) abs = 1.0;
-            // Gamma curve
-            double curved = Math.Pow(abs, Linearity);
-            return sign * curved;
         }
     }
 
     // =========================================================================
-    // 4. HTTP Server & Web Companion (Port 8080)
+    // 5. Gyropad-Style Interactive Live PadDiagram
+    // =========================================================================
+    public class PadDiagram : Control
+    {
+        private readonly PhoneInputReceiver _input;
+        private readonly F1TelemetryListener _telemetry;
+
+        public PadDiagram(PhoneInputReceiver input, F1TelemetryListener telemetry)
+        {
+            _input = input;
+            _telemetry = telemetry;
+            SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer, true);
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            Graphics g = e.Graphics;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            g.Clear(Theme.Bg);
+
+            int w = Width;
+            int h = Height;
+
+            // Draw Phone Outline (Bezel)
+            int phoneW = w - 20;
+            int phoneH = h - 20;
+            Rectangle phoneRect = new Rectangle(10, 10, phoneW, phoneH);
+
+            using (GraphicsPath path = GetRoundedRect(phoneRect, 24))
+            {
+                using (SolidBrush b = new SolidBrush(Theme.Surface)) g.FillPath(b, path);
+                using (Pen p = new Pen(Theme.Stroke, 2f)) g.DrawPath(p, path);
+            }
+
+            // Draw Left Pedal (Brake - Neon Red/Pink)
+            int pedalW = (int)(phoneW * 0.14);
+            int pedalH = (int)(phoneH * 0.65);
+            int pedalY = (int)(phoneH * 0.22);
+
+            Rectangle brakeRect = new Rectangle(phoneRect.X + 16, phoneRect.Y + pedalY, pedalW, pedalH);
+            DrawPedal(g, brakeRect, "BRAKE", (float)_input.Brake, Theme.Brake);
+
+            // Draw Right Pedal (Throttle - Neon Purple)
+            Rectangle throttleRect = new Rectangle(phoneRect.Right - pedalW - 16, phoneRect.Y + pedalY, pedalW, pedalH);
+            DrawPedal(g, throttleRect, "GAS", (float)_input.Throttle, Theme.Throttle);
+
+            // Draw Steering Arc in Center
+            int arcCenterW = phoneW / 2;
+            int arcCenterH = phoneH / 2;
+            int arcRadius = (int)(phoneH * 0.38);
+            Rectangle arcBounds = new Rectangle(phoneRect.X + arcCenterW - arcRadius, phoneRect.Y + arcCenterH - arcRadius - 10, arcRadius * 2, arcRadius * 2);
+
+            using (Pen p = new Pen(Theme.Stroke, 4f))
+            {
+                g.DrawArc(p, arcBounds, 140, 260);
+            }
+
+            // Steering needle based on angle
+            double steerNorm = _input.Steer; // -1.0 to 1.0
+            float steerAngle = 270f + (float)(steerNorm * 90f);
+            float rad = steerAngle * (float)Math.PI / 180f;
+            float nX = (phoneRect.X + arcCenterW) + (float)Math.Cos(rad) * (arcRadius - 15);
+            float nY = (phoneRect.Y + arcCenterH - 10) + (float)Math.Sin(rad) * (arcRadius - 15);
+
+            using (Pen p = new Pen(Theme.Accent, 3f))
+            {
+                g.DrawLine(p, phoneRect.X + arcCenterW, phoneRect.Y + arcCenterH - 10, nX, nY);
+            }
+
+            // Draw Center Gear & Telemetry
+            string gearStr = _telemetry.Data.Gear == -1 ? "R" : (_telemetry.Data.Gear == 0 ? "N" : _telemetry.Data.Gear.ToString());
+            string speedStr = string.Format("{0} KM/H", _telemetry.Data.SpeedKmh);
+
+            using (SolidBrush b = new SolidBrush(Theme.Warn))
+            {
+                g.DrawString(gearStr, Theme.MonoB, b, phoneRect.X + arcCenterW - 10, phoneRect.Y + arcCenterH - 24);
+            }
+            using (SolidBrush b = new SolidBrush(Theme.Ink))
+            {
+                g.DrawString(speedStr, Theme.Small, b, phoneRect.X + arcCenterW - 24, phoneRect.Y + arcCenterH + 12);
+            }
+
+            // Top F1 Buttons (Pills)
+            int pillW = (int)(phoneW * 0.13);
+            int pillH = 26;
+            int topY = phoneRect.Y + 16;
+
+            DrawPillButton(g, new Rectangle(phoneRect.X + 16, topY, pillW, pillH), "ERS / OT", (_input.Buttons & ViGEmBridge.LEFT_THUMB) != 0);
+            DrawPillButton(g, new Rectangle(phoneRect.X + 24 + pillW, topY, pillW, pillH), "PIT", (_input.Buttons & ViGEmBridge.DPAD_DOWN) != 0);
+            DrawPillButton(g, new Rectangle(phoneRect.Right - (pillW * 2) - 24, topY, pillW, pillH), "◀ DOWN", (_input.Buttons & ViGEmBridge.LEFT_SHOULDER) != 0);
+            DrawPillButton(g, new Rectangle(phoneRect.Right - pillW - 16, topY, pillW, pillH), "UP ▶", (_input.Buttons & ViGEmBridge.RIGHT_SHOULDER) != 0);
+
+            // Center Status Pill
+            int statusW = (int)(phoneW * 0.28);
+            Rectangle statusPill = new Rectangle(phoneRect.X + arcCenterW - (statusW / 2), topY, statusW, pillH);
+            using (GraphicsPath path = GetRoundedRect(statusPill, 8))
+            {
+                using (SolidBrush b = new SolidBrush(Theme.SurfaceHi)) g.FillPath(b, path);
+                using (Pen p = new Pen(Theme.Stroke, 1f)) g.DrawPath(p, path);
+            }
+            using (SolidBrush b = new SolidBrush(_telemetry.Data.Active ? Theme.Good : Theme.Dim))
+            {
+                string statusText = _telemetry.Data.Active ? "● F1 25 LIVE TELEMETRY" : "○ F1 WAITING (PORT 20777)";
+                g.DrawString(statusText, Theme.Small, b, statusPill.X + 14, statusPill.Y + 6);
+            }
+        }
+
+        private void DrawPedal(Graphics g, Rectangle r, string label, float fillVal, Color fillCol)
+        {
+            using (GraphicsPath path = GetRoundedRect(r, 12))
+            {
+                using (SolidBrush b = new SolidBrush(Theme.SurfaceHi)) g.FillPath(b, path);
+                using (Pen p = new Pen(Theme.Stroke, 1.5f)) g.DrawPath(p, path);
+            }
+
+            if (fillVal > 0.01f)
+            {
+                int fillHeight = (int)(r.Height * Math.Min(1.0f, fillVal));
+                Rectangle fillR = new Rectangle(r.X + 2, r.Bottom - fillHeight - 2, r.Width - 4, fillHeight);
+                using (GraphicsPath fpath = GetRoundedRect(fillR, 10))
+                {
+                    using (SolidBrush b = new SolidBrush(fillCol)) g.FillPath(b, fpath);
+                }
+            }
+
+            using (SolidBrush b = new SolidBrush(Theme.Ink))
+            {
+                g.DrawString(label, Theme.BodyB, b, r.X + 10, r.Bottom - 26);
+            }
+        }
+
+        private void DrawPillButton(Graphics g, Rectangle r, string text, bool pressed)
+        {
+            Color bg = pressed ? Theme.Accent : Theme.SurfaceHi;
+            Color border = pressed ? Theme.Ink : Theme.Stroke;
+
+            using (GraphicsPath path = GetRoundedRect(r, 8))
+            {
+                using (SolidBrush b = new SolidBrush(bg)) g.FillPath(b, path);
+                using (Pen p = new Pen(border, 1.5f)) g.DrawPath(p, path);
+            }
+            using (SolidBrush b = new SolidBrush(Theme.Ink))
+            {
+                g.DrawString(text, Theme.Small, b, r.X + 8, r.Y + 6);
+            }
+        }
+
+        private static GraphicsPath GetRoundedRect(Rectangle r, int radius)
+        {
+            GraphicsPath path = new GraphicsPath();
+            int d = radius * 2;
+            path.AddArc(r.X, r.Y, d, d, 180, 90);
+            path.AddArc(r.Right - d, r.Y, d, d, 270, 90);
+            path.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90);
+            path.AddArc(r.X, r.Bottom - d, d, d, 90, 90);
+            path.CloseFigure();
+            return path;
+        }
+    }
+
+    // =========================================================================
+    // 6. Gyropad-Style Rounded Modern Card
+    // =========================================================================
+    public class Card : Panel
+    {
+        public string TitleText { get; set; }
+
+        public Card(string title)
+        {
+            TitleText = title;
+            DoubleBuffered = true;
+            Padding = new Padding(16, 36, 16, 16);
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            Graphics g = e.Graphics;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+
+            Rectangle r = new Rectangle(1, 1, Width - 3, Height - 3);
+            using (GraphicsPath path = GetRoundedRect(r, 12))
+            {
+                using (SolidBrush b = new SolidBrush(Theme.Surface)) g.FillPath(b, path);
+                using (Pen p = new Pen(Theme.Stroke, 1.5f)) g.DrawPath(p, path);
+            }
+
+            if (!string.IsNullOrEmpty(TitleText))
+            {
+                using (SolidBrush b = new SolidBrush(Theme.Dim))
+                {
+                    g.DrawString(TitleText.ToUpperInvariant(), Theme.Small, b, 16, 12);
+                }
+            }
+        }
+
+        private static GraphicsPath GetRoundedRect(Rectangle r, int radius)
+        {
+            GraphicsPath path = new GraphicsPath();
+            int d = radius * 2;
+            path.AddArc(r.X, r.Y, d, d, 180, 90);
+            path.AddArc(r.Right - d, r.Y, d, d, 270, 90);
+            path.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90);
+            path.AddArc(r.X, r.Bottom - d, d, d, 90, 90);
+            path.CloseFigure();
+            return path;
+        }
+    }
+
+    // =========================================================================
+    // 7. Gyropad-Style Toggle Method Button (Wi-Fi / USB)
+    // =========================================================================
+    public class MethodBtn : Control
+    {
+        public bool Active { get; set; }
+        public string Title { get; set; }
+        public string Subtitle { get; set; }
+
+        public MethodBtn(string title, string subtitle, bool active)
+        {
+            Title = title;
+            Subtitle = subtitle;
+            Active = active;
+            DoubleBuffered = true;
+            Cursor = Cursors.Hand;
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            Graphics g = e.Graphics;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+
+            Rectangle r = new Rectangle(1, 1, Width - 3, Height - 3);
+            Color bg = Active ? Theme.SurfaceHi : Theme.Surface;
+            Color border = Active ? Theme.Accent : Theme.Stroke;
+
+            using (GraphicsPath path = GetRoundedRect(r, 10))
+            {
+                using (SolidBrush b = new SolidBrush(bg)) g.FillPath(b, path);
+                using (Pen p = new Pen(border, Active ? 2f : 1f)) g.DrawPath(p, path);
+            }
+
+            using (SolidBrush b = new SolidBrush(Active ? Theme.Ink : Theme.Dim))
+            {
+                g.DrawString(Title, Theme.BodyB, b, 14, 12);
+            }
+            using (SolidBrush b = new SolidBrush(Theme.Faint))
+            {
+                g.DrawString(Subtitle, Theme.Small, b, 14, 30);
+            }
+        }
+
+        private static GraphicsPath GetRoundedRect(Rectangle r, int radius)
+        {
+            GraphicsPath path = new GraphicsPath();
+            int d = radius * 2;
+            path.AddArc(r.X, r.Y, d, d, 180, 90);
+            path.AddArc(r.Right - d, r.Y, d, d, 270, 90);
+            path.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90);
+            path.AddArc(r.X, r.Bottom - d, d, d, 90, 90);
+            path.CloseFigure();
+            return path;
+        }
+    }
+
+    // =========================================================================
+    // 8. Main Form - Authentic Gyropad PC Layout in F1 Edition
+    // =========================================================================
+    public class MainForm : Form
+    {
+        private readonly ViGEmBridge _vigem;
+        private readonly F1TelemetryListener _telemetry;
+        private readonly PhoneInputReceiver _input;
+
+        private PadDiagram _diagram;
+        private Card _connCard;
+        private Card _telemCard;
+
+        private Label _lblIp;
+        private Label _lblStatus;
+        private Label _lblTelemDetail;
+        private MethodBtn _btnWifi;
+        private MethodBtn _btnUsb;
+
+        private System.Windows.Forms.Timer _tickTimer;
+
+        public MainForm()
+        {
+            // Bridge components
+            _vigem = new ViGEmBridge();
+            _vigem.Open();
+            _vigem.Plug();
+
+            _telemetry = new F1TelemetryListener();
+            _telemetry.Start(20777);
+
+            _input = new PhoneInputReceiver(_vigem);
+            _input.Start(8081);
+
+            // Check USB Port Forwarding
+            CheckUsbForward();
+
+            InitializeUI();
+        }
+
+        private void InitializeUI()
+        {
+            Text = "ApexWheel F1 - Companion Server";
+            Size = new Size(820, 680);
+            MinimumSize = new Size(760, 620);
+            StartPosition = FormStartPosition.CenterScreen;
+            BackColor = Theme.Bg;
+            ForeColor = Theme.Ink;
+            Font = Theme.Body;
+
+            // Header Banner
+            Panel header = new Panel { Dock = DockStyle.Top, Height = 64, BackColor = Theme.Surface, Padding = new Padding(20, 16, 20, 16) };
+            Label title = new Label
+            {
+                Text = "🏎️ APEXWHEEL F1",
+                Font = Theme.H1,
+                ForeColor = Theme.Ink,
+                AutoSize = true,
+                Location = new Point(20, 16)
+            };
+            Label version = new Label
+            {
+                Text = "v1.37 F1 EDITION (ViGEm Xbox 360 + F1 25 UDP Telemetry)",
+                Font = Theme.Small,
+                ForeColor = Theme.Dim,
+                AutoSize = true,
+                Location = new Point(240, 22)
+            };
+            header.Controls.Add(title);
+            header.Controls.Add(version);
+            Controls.Add(header);
+
+            // Main Layout Container
+            TableLayoutPanel mainLayout = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 2,
+                RowCount = 2,
+                Padding = new Padding(16),
+                BackColor = Theme.Bg
+            };
+            mainLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 45f));
+            mainLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 55f));
+            mainLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 55f));
+            mainLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 45f));
+
+            // Card 1: Connection & Methods
+            _connCard = new Card("CONNECTION") { Dock = DockStyle.Fill };
+            _btnWifi = new MethodBtn("WI-FI LOCAL", GetLocalIp() + ":8080", true) { Location = new Point(16, 38), Size = new Size(140, 56) };
+            _btnUsb = new MethodBtn("USB CABLE", "ADB 0ms Jitter", false) { Location = new Point(166, 38), Size = new Size(140, 56) };
+
+            _btnWifi.Click += (s, e) => { _btnWifi.Active = true; _btnUsb.Active = false; _btnWifi.Invalidate(); _btnUsb.Invalidate(); };
+            _btnUsb.Click += (s, e) => { _btnWifi.Active = false; _btnUsb.Active = true; CheckUsbForward(); _btnWifi.Invalidate(); _btnUsb.Invalidate(); };
+
+            _lblIp = new Label
+            {
+                Text = "Phone URL: http://" + GetLocalIp() + ":8080",
+                ForeColor = Theme.Accent,
+                Font = Theme.BodyB,
+                Location = new Point(16, 108),
+                AutoSize = true
+            };
+            _lblStatus = new Label
+            {
+                Text = "Status: Waiting for phone connection on port 8081...",
+                ForeColor = Theme.Dim,
+                Font = Theme.Small,
+                Location = new Point(16, 134),
+                AutoSize = true
+            };
+
+            _connCard.Controls.Add(_btnWifi);
+            _connCard.Controls.Add(_btnUsb);
+            _connCard.Controls.Add(_lblIp);
+            _connCard.Controls.Add(_lblStatus);
+            mainLayout.Controls.Add(_connCard, 0, 0);
+
+            // Card 2: Interactive F1 Pad Diagram (Right Column)
+            _diagram = new PadDiagram(_input, _telemetry) { Dock = DockStyle.Fill };
+            mainLayout.Controls.Add(_diagram, 1, 0);
+            mainLayout.SetRowSpan(_diagram, 2);
+
+            // Card 3: F1 25 UDP Telemetry Status
+            _telemCard = new Card("F1 25 TELEMETRY ENGINE (PORT 20777)") { Dock = DockStyle.Fill };
+            _lblTelemDetail = new Label
+            {
+                Text = "F1 25: Waiting for car on track...\n\nEnable in F1 25: Settings -> Telemetry -> UDP On (Port 20777)",
+                ForeColor = Theme.Dim,
+                Font = Theme.Small,
+                Location = new Point(16, 36),
+                Size = new Size(290, 70)
+            };
+            _telemCard.Controls.Add(_lblTelemDetail);
+            mainLayout.Controls.Add(_telemCard, 0, 1);
+
+            Controls.Add(mainLayout);
+
+            // Timer for UI refresh
+            _tickTimer = new System.Windows.Forms.Timer { Interval = 33 }; // 30fps
+            _tickTimer.Tick += (s, e) =>
+            {
+                _diagram.Invalidate();
+
+                if (_telemetry.Data.Active)
+                {
+                    _lblTelemDetail.Text = string.Format(
+                        "F1 25: ACTIVE\nGear: {0} | Speed: {1} KM/H | RPM: {2}\nDRS: {3} | ERS: {4:0}% | Brake Bias: {5}%",
+                        _telemetry.Data.Gear == -1 ? "R" : (_telemetry.Data.Gear == 0 ? "N" : _telemetry.Data.Gear.ToString()),
+                        _telemetry.Data.SpeedKmh,
+                        _telemetry.Data.EngineRPM,
+                        _telemetry.Data.DrsActive ? "OPEN" : (_telemetry.Data.DrsAllowed ? "READY" : "OFF"),
+                        _telemetry.Data.ErsPercent,
+                        _telemetry.Data.BrakeBias
+                    );
+                    _lblTelemDetail.ForeColor = Theme.Good;
+                }
+
+                if (_input.PacketsReceived > 0)
+                {
+                    _lblStatus.Text = string.Format("Phone: Connected ({0} inputs) | ViGEm: Active", _input.PacketsReceived);
+                    _lblStatus.ForeColor = Theme.Good;
+                }
+            };
+            _tickTimer.Start();
+        }
+
+        private void CheckUsbForward()
+        {
+            try
+            {
+                Process p = new Process();
+                p.StartInfo.FileName = "adb.exe";
+                p.StartInfo.Arguments = "reverse tcp:8080 tcp:8080";
+                p.StartInfo.UseShellExecute = false;
+                p.StartInfo.CreateNoWindow = true;
+                p.Start();
+
+                Process p2 = new Process();
+                p2.StartInfo.FileName = "adb.exe";
+                p2.StartInfo.Arguments = "reverse udp:8081 udp:8081";
+                p2.StartInfo.UseShellExecute = false;
+                p2.StartInfo.CreateNoWindow = true;
+                p2.Start();
+            }
+            catch { }
+        }
+
+        private static string GetLocalIp()
+        {
+            try
+            {
+                using (Socket s = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, 0))
+                {
+                    s.Connect("8.8.8.8", 65530);
+                    IPEndPoint ep = s.LocalEndPoint as IPEndPoint;
+                    if (ep != null) return ep.Address.ToString();
+                }
+            }
+            catch { }
+            return "127.0.0.1";
+        }
+
+        protected override void OnFormClosing(FormClosingEventArgs e)
+        {
+            _tickTimer.Stop();
+            _input.Stop();
+            _telemetry.Stop();
+            _vigem.Close();
+            base.OnFormClosing(e);
+        }
+    }
+
+    // =========================================================================
+    // 9. HTTP Companion Server for Phone Browser / APK
     // =========================================================================
     public class HttpServer
     {
@@ -616,7 +1041,7 @@ namespace ApexWheel
             _webRoot = webRoot;
         }
 
-        public void Start(int port = 8080)
+        public void Start(int port)
         {
             try
             {
@@ -624,37 +1049,30 @@ namespace ApexWheel
                 _listener.Prefixes.Add("http://*:" + port + "/");
                 _listener.Start();
                 _running = true;
-                _thread = new Thread(ListenLoop) { IsBackground = true };
+                _thread = new Thread(ListenLoop);
+                _thread.IsBackground = true;
                 _thread.Start();
-                Console.WriteLine("[Web] Server running at http://localhost:" + port + "/");
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine("[Web] HttpListener error: " + ex.Message + ". Falling back to localhost only.");
                 try
                 {
                     _listener = new HttpListener();
                     _listener.Prefixes.Add("http://localhost:" + port + "/");
                     _listener.Start();
                     _running = true;
-                    _thread = new Thread(ListenLoop) { IsBackground = true };
+                    _thread = new Thread(ListenLoop);
+                    _thread.IsBackground = true;
                     _thread.Start();
                 }
-                catch (Exception e2)
-                {
-                    Console.WriteLine("[Web] Failed to start HTTP server: " + e2.Message);
-                }
+                catch { }
             }
         }
 
         public void Stop()
         {
             _running = false;
-            if (_listener != null)
-            {
-                _listener.Close();
-                _listener = null;
-            }
+            if (_listener != null) { _listener.Close(); _listener = null; }
         }
 
         private void ListenLoop()
@@ -666,10 +1084,7 @@ namespace ApexWheel
                     var ctx = _listener.GetContext();
                     ThreadPool.QueueUserWorkItem((state) => HandleRequest(ctx));
                 }
-                catch
-                {
-                    // ignore
-                }
+                catch { }
             }
         }
 
@@ -679,7 +1094,6 @@ namespace ApexWheel
             {
                 string rawUrl = ctx.Request.Url.AbsolutePath;
 
-                // API Routes
                 if (rawUrl.Equals("/api/telemetry", StringComparison.OrdinalIgnoreCase))
                 {
                     string json = _telemetry.Data.ToJson();
@@ -693,14 +1107,9 @@ namespace ApexWheel
                 else if (rawUrl.Equals("/api/status", StringComparison.OrdinalIgnoreCase))
                 {
                     string json = string.Format(
-                        "{{\"vigemAvailable\":{0},\"vigemPlugged\":{1},\"vigemStatus\":\"{2}\",\"steer\":{3:0.00},\"throttle\":{4:0.00},\"brake\":{5:0.00},\"packets\":{6},\"f1Active\":{7}}}",
-                        _bridge.Available ? "true" : "false",
-                        _bridge.Plugged ? "true" : "false",
-                        _bridge.Status,
-                        _input.Steer,
-                        _input.Throttle,
-                        _input.Brake,
-                        _input.PacketsReceived,
+                        "{{\"vigemAvailable\":{0},\"vigemPlugged\":{1},\"steer\":{2:0.00},\"throttle\":{3:0.00},\"brake\":{4:0.00},\"packets\":{5},\"f1Active\":{6}}}",
+                        _bridge.Available ? "true" : "false", _bridge.Plugged ? "true" : "false",
+                        _input.Steer, _input.Throttle, _input.Brake, _input.PacketsReceived,
                         _telemetry.Data.Active ? "true" : "false"
                     );
                     byte[] data = Encoding.UTF8.GetBytes(json);
@@ -725,7 +1134,7 @@ namespace ApexWheel
                     return;
                 }
 
-                // Serve static files from web root
+                // Static files
                 string file = rawUrl.TrimStart('/');
                 if (string.IsNullOrEmpty(file)) file = "index.html";
                 string fullPath = Path.Combine(_webRoot, file);
@@ -738,9 +1147,6 @@ namespace ApexWheel
                     if (ext == ".html") mime = "text/html; charset=utf-8";
                     else if (ext == ".css") mime = "text/css";
                     else if (ext == ".js") mime = "application/javascript";
-                    else if (ext == ".json") mime = "application/json";
-                    else if (ext == ".svg") mime = "image/svg+xml";
-                    else if (ext == ".png") mime = "image/png";
                     else if (ext == ".apk") mime = "application/vnd.android.package-archive";
 
                     ctx.Response.ContentType = mime;
@@ -754,183 +1160,40 @@ namespace ApexWheel
                     ctx.Response.Close();
                 }
             }
-            catch
-            {
-                try { ctx.Response.Close(); } catch { }
-            }
+            catch { try { ctx.Response.Close(); } catch { } }
         }
     }
 
     // =========================================================================
-    // 5. USB ADB Reverse Port Forwarding Helper
+    // 10. Program Entry Point
     // =========================================================================
-    public static class AdbHelper
+    static class Program
     {
-        public static bool CheckAndForwardPorts()
-        {
-            try
-            {
-                Process p = new Process();
-                p.StartInfo.FileName = "adb.exe";
-                p.StartInfo.Arguments = "devices";
-                p.StartInfo.UseShellExecute = false;
-                p.StartInfo.RedirectStandardOutput = true;
-                p.StartInfo.CreateNoWindow = true;
-                p.Start();
-                string output = p.StandardOutput.ReadToEnd();
-                p.WaitForExit();
-
-                string[] lines = output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
-                bool hasDevice = false;
-                for (int i = 1; i < lines.Length; i++)
-                {
-                    if (lines[i].Contains("device"))
-                    {
-                        hasDevice = true;
-                        break;
-                    }
-                }
-
-                if (hasDevice)
-                {
-                    // Forward HTTP and UDP ports to phone over USB cable
-                    RunAdb("reverse tcp:8080 tcp:8080");
-                    RunAdb("reverse udp:8081 udp:8081");
-                    Console.WriteLine("[USB] ADB Device connected! Forwarded ports 8080 & 8081 for 0ms USB play.");
-                    return true;
-                }
-            }
-            catch
-            {
-                // ADB not installed or not in path
-            }
-            return false;
-        }
-
-        private static void RunAdb(string args)
-        {
-            try
-            {
-                Process p = new Process();
-                p.StartInfo.FileName = "adb.exe";
-                p.StartInfo.Arguments = args;
-                p.StartInfo.UseShellExecute = false;
-                p.StartInfo.CreateNoWindow = true;
-                p.Start();
-                p.WaitForExit();
-            }
-            catch { }
-        }
-    }
-
-    // =========================================================================
-    // 6. Main Program & Real-Time Console Dashboard
-    // =========================================================================
-    class Program
-    {
+        [STAThread]
         static void Main(string[] args)
         {
-            Console.Title = "ApexWheel F1 - PC Companion Server";
-            Console.ForegroundColor = ConsoleColor.Cyan;
-            Console.WriteLine(@"
-    =================================================================
-       🏎️  ApexWheel F1 - Phone Steering Wheel Companion Server
-       High-Speed Gyro Controller & F1 25 UDP Telemetry Bridge
-    =================================================================
-");
-            Console.ResetColor();
+            Application.EnableVisualStyles();
+            Application.SetCompatibleTextRenderingDefault(false);
 
-            // Locate base directory
             string exeDir = AppDomain.CurrentDomain.BaseDirectory;
             string rootDir = Path.GetFullPath(Path.Combine(exeDir, ".."));
             string webRoot = Path.Combine(rootDir, "client-web");
-            if (!Directory.Exists(webRoot))
-            {
-                webRoot = Path.Combine(exeDir, "client-web");
-                if (!Directory.Exists(webRoot)) webRoot = exeDir;
-            }
+            if (!Directory.Exists(webRoot)) webRoot = exeDir;
 
-            // 1. Initialize ViGEm virtual controller
+            MainForm form = new MainForm();
+
+            // Also start HTTP server for mobile phone pairing
             ViGEmBridge bridge = new ViGEmBridge();
-            if (!bridge.Open())
-            {
-                Console.ForegroundColor = ConsoleColor.Yellow;
-                Console.WriteLine("[Driver] ViGEmBus driver not installed on this PC.");
-                Console.WriteLine("[Driver] Please run: drivers\\ViGEmBus.exe to enable virtual Xbox 360 controller.");
-                Console.ResetColor();
-            }
-            else
-            {
-                if (bridge.Plug())
-                {
-                    Console.ForegroundColor = ConsoleColor.Green;
-                    Console.WriteLine("[Driver] " + bridge.Status);
-                    Console.ResetColor();
-                }
-            }
-
-            // 2. Start F1 25 Telemetry Listener
+            bridge.Open();
             F1TelemetryListener telemetry = new F1TelemetryListener();
             telemetry.Start(20777);
+            PhoneInputReceiver input = new PhoneInputReceiver(bridge);
+            input.Start(8081);
 
-            // 3. Start Phone Input Receiver
-            PhoneInputReceiver phoneReceiver = new PhoneInputReceiver(bridge);
-            phoneReceiver.Start(8081);
+            HttpServer http = new HttpServer(telemetry, input, bridge, webRoot);
+            http.Start(8080);
 
-            // 4. Start Web Companion Server
-            HttpServer server = new HttpServer(telemetry, phoneReceiver, bridge, webRoot);
-            server.Start(8080);
-
-            // 5. Check USB Tethering
-            AdbHelper.CheckAndForwardPorts();
-
-            // Find local IP address
-            string localIp = "127.0.0.1";
-            try
-            {
-                using (Socket socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, 0))
-                {
-                    socket.Connect("8.8.8.8", 65530);
-                    IPEndPoint endPoint = socket.LocalEndPoint as IPEndPoint;
-                    if (endPoint != null) localIp = endPoint.Address.ToString();
-                }
-            }
-            catch { }
-
-            Console.ForegroundColor = ConsoleColor.White;
-            Console.WriteLine("\n[Ready] Connect your phone:");
-            Console.WriteLine("   -> Wi-Fi:  Open http://" + localIp + ":8080 on your phone browser / ApexWheel APK");
-            Console.WriteLine("   -> USB:    Connect via USB cable and open http://localhost:8080");
-            Console.WriteLine("\nPress Ctrl+C to stop.\n");
-            Console.ResetColor();
-
-            // Live Dashboard Loop
-            while (true)
-            {
-                Thread.Sleep(200);
-
-                string steerMeter = RenderBar(phoneReceiver.Steer, -1.0, 1.0, 20);
-                string gasMeter = RenderBar(phoneReceiver.Throttle, 0.0, 1.0, 10);
-                string brakeMeter = RenderBar(phoneReceiver.Brake, 0.0, 1.0, 10);
-
-                string f1Status = telemetry.Data.Active 
-                    ? string.Format("F1 Active | Gear: {0} | {1} KM/H | {2} RPM | DRS: {3}", 
-                        telemetry.Data.Gear, telemetry.Data.SpeedKmh, telemetry.Data.EngineRPM, telemetry.Data.DrsActive ? "ON" : "OFF")
-                    : "F1 25 Waiting (Port 20777)";
-
-                string line = string.Format("\r[Steer {0}] [Gas {1}] [Brake {2}] | {3}",
-                    steerMeter, gasMeter, brakeMeter, f1Status);
-
-                Console.Write(line.PadRight(Console.WindowWidth - 1));
-            }
-        }
-
-        private static string RenderBar(double val, double min, double max, int width)
-        {
-            double norm = (val - min) / (max - min);
-            norm = Math.Max(0.0, Math.Min(1.0, norm));
-            int filled = (int)Math.Round(norm * width);
-            return new string('#', filled) + new string('-', width - filled);
+            Application.Run(form);
         }
     }
 }

@@ -17,6 +17,9 @@ venv/
 env/
 ENV/
 
+# Gyropad Reference files
+Gyropad*
+
 # Android
 .gradle/
 build/
