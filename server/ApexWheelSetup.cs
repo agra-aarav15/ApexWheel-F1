@@ -239,8 +239,8 @@ namespace ApexWheelSetup
                     {
                         try
                         {
-                            // Advanced Installer silent flag is /exenoui /qn
-                            var psi = new ProcessStartInfo(vigemExe, "/exenoui /qn");
+                            // Silent install parameters for ViGEmBus
+                            var psi = new ProcessStartInfo(vigemExe, "/qn /norestart");
                             psi.UseShellExecute = true;
                             psi.Verb = "runas";
                             var p = Process.Start(psi);
