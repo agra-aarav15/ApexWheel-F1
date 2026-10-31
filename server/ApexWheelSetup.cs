@@ -239,11 +239,12 @@ namespace ApexWheelSetup
                     {
                         try
                         {
-                            var psi = new ProcessStartInfo(vigemExe, "/install /quiet");
+                            // Advanced Installer silent flag is /exenoui /qn
+                            var psi = new ProcessStartInfo(vigemExe, "/exenoui /qn");
                             psi.UseShellExecute = true;
                             psi.Verb = "runas";
                             var p = Process.Start(psi);
-                            if (p != null) p.WaitForExit(30000);
+                            if (p != null) p.WaitForExit(15000);
                         }
                         catch { }
                     }
