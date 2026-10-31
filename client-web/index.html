@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, orientation=landscape">
+    <title>ApexWheel F1 - Virtual Racing Wheel</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="f1-mode">
+    <!-- Top Status Bar -->
+    <header id="top-bar">
+        <div class="brand">
+            <span class="brand-badge">APEX</span>
+            <span class="brand-title">WHEEL F1</span>
+        </div>
+        <div class="mode-tabs">
+            <button class="mode-btn active" data-mode="f1">🏎️ F1 Wheel</button>
+            <button class="mode-btn" data-mode="gt">🚗 GT Sim</button>
+            <button class="mode-btn" data-mode="gamepad">🎮 Gamepad</button>
+        </div>
+        <div class="status-cluster">
+            <span id="conn-badge" class="badge disconnected">Disconnected</span>
+            <span id="telemetry-badge" class="badge f1-idle">F1 25 Idle</span>
+            <button id="calibrate-btn" class="util-btn" title="Center Steering">🎯 Calibrate</button>
+            <button id="fullscreen-btn" class="util-btn" title="Fullscreen">⛶</button>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main id="app-container">
+        
+        <!-- ==================== MODE 1: F1 STEERING WHEEL ==================== -->
+        <section id="f1-wheel-view" class="view active">
+            <!-- Left Side Controls -->
+            <div class="wheel-wing left-wing">
+                <button class="f1-btn btn-ers" id="btn-ers">
+                    <span class="btn-lbl">ERS</span>
+                    <span class="btn-sub">OT</span>
+                </button>
+                <button class="f1-btn btn-pit" id="btn-pit">
+                    <span class="btn-lbl">PIT</span>
+                    <span class="btn-sub">LIMIT</span>
+                </button>
+                <div class="bias-control">
+                    <button class="f1-mini-btn" id="btn-bb-plus">BB +</button>
+                    <span class="bias-label" id="bias-display">56.0%</span>
+                    <button class="f1-mini-btn" id="btn-bb-minus">BB -</button>
+                </div>
+                <!-- Left Touch Pedal (Brake) -->
+                <div class="pedal-box brake-pedal" id="touch-brake">
+                    <div class="pedal-fill brake-fill" id="brake-fill"></div>
+                    <span class="pedal-label">BRAKE</span>
+                </div>
+                <!-- Downshift Paddle -->
+                <button class="paddle-shifter left-paddle" id="paddle-down">
+                    <span class="paddle-text">◀ DOWN</span>
+                </button>
+            </div>
+
+            <!-- Center LCD Cockpit Dashboard -->
+            <div class="wheel-hub">
+                <!-- Shift LED Rev Bar -->
+                <div class="rev-bar-container">
+                    <div class="rev-led-bar" id="rev-lights">
+                        <!-- 5 Green, 5 Red, 5 Blue -->
+                        <span class="led led-green" data-led="0"></span>
+                        <span class="led led-green" data-led="1"></span>
+                        <span class="led led-green" data-led="2"></span>
+                        <span class="led led-green" data-led="3"></span>
+                        <span class="led led-green" data-led="4"></span>
+                        <span class="led led-red" data-led="5"></span>
+                        <span class="led led-red" data-led="6"></span>
+                        <span class="led led-red" data-led="7"></span>
+                        <span class="led led-red" data-led="8"></span>
+                        <span class="led led-red" data-led="9"></span>
+                        <span class="led led-blue" data-led="10"></span>
+                        <span class="led led-blue" data-led="11"></span>
+                        <span class="led led-blue" data-led="12"></span>
+                        <span class="led led-blue" data-led="13"></span>
+                        <span class="led led-blue" data-led="14"></span>
+                    </div>
+                </div>
+
+                <!-- Digital LCD Screen -->
+                <div class="f1-lcd-screen" id="f1-screen">
+                    <div class="lcd-row top-row">
+                        <div class="lcd-cell">
+                            <span class="cell-label">SPEED</span>
+                            <span class="cell-val num" id="val-speed">0</span>
+                            <span class="cell-unit">KM/H</span>
+                        </div>
+                        <div class="lcd-cell center-gear">
+                            <span class="gear-disp" id="val-gear">N</span>
+                        </div>
+                        <div class="lcd-cell">
+                            <span class="cell-label">RPM</span>
+                            <span class="cell-val num" id="val-rpm">0</span>
+                            <span class="cell-unit" id="val-maxrpm">/13500</span>
+                        </div>
+                    </div>
+
+                    <div class="lcd-row mid-row">
+                        <div class="drs-status-box" id="drs-indicator">
+                            <span class="drs-text">DRS</span>
+                        </div>
+                        <div class="ers-status-box">
+                            <div class="ers-label-row">
+                                <span class="ers-text">ERS</span>
+                                <span class="ers-percent" id="ers-num">100%</span>
+                            </div>
+                            <div class="ers-bar-outer">
+                                <div class="ers-bar-inner" id="ers-bar" style="width: 100%;"></div>
+                            </div>
+                        </div>
+                        <div class="flag-status-box" id="flag-indicator">
+                            <span class="flag-text" id="flag-text">TRACK CLEAR</span>
+                        </div>
+                    </div>
+
+                    <div class="lcd-row bottom-row">
+                        <!-- Tyre Temps Grid -->
+                        <div class="tyres-grid">
+                            <div class="tyre-box" id="tyre-fl"><span>FL</span><b id="temp-fl">90°</b></div>
+                            <div class="tyre-box" id="tyre-fr"><span>FR</span><b id="temp-fr">90°</b></div>
+                            <div class="tyre-box" id="tyre-rl"><span>RL</span><b id="temp-rl">90°</b></div>
+                            <div class="tyre-box" id="tyre-rr"><span>RR</span><b id="temp-rr">90°</b></div>
+                        </div>
+                        <!-- Lap & Delta -->
+                        <div class="lap-info">
+                            <div class="lap-line">POS: <b id="val-pos">P1</b></div>
+                            <div class="lap-line">TIME: <b id="val-lap">0:00.00</b></div>
+                        </div>
+                        <!-- Steering Angle Telemetry -->
+                        <div class="steer-feedback">
+                            <span>STEER</span>
+                            <b id="steer-degrees">0°</b>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Steering Wheel Rim Arc Animation -->
+                <div class="steering-arc" id="steering-wheel-visual">
+                    <div class="center-line"></div>
+                </div>
+            </div>
+
+            <!-- Right Side Controls -->
+            <div class="wheel-wing right-wing">
+                <button class="f1-btn btn-drs" id="btn-drs">
+                    <span class="btn-lbl">DRS</span>
+                    <span class="btn-sub">WING</span>
+                </button>
+                <button class="f1-btn btn-radio" id="btn-radio">
+                    <span class="btn-lbl">RADIO</span>
+                    <span class="btn-sub">MFD</span>
+                </button>
+                <div class="bias-control">
+                    <button class="f1-mini-btn" id="btn-diff-plus">DIFF +</button>
+                    <span class="bias-label">50%</span>
+                    <button class="f1-mini-btn" id="btn-diff-minus">DIFF -</button>
+                </div>
+                <!-- Right Touch Pedal (Throttle) -->
+                <div class="pedal-box throttle-pedal" id="touch-throttle">
+                    <div class="pedal-fill throttle-fill" id="throttle-fill"></div>
+                    <span class="pedal-label">THROTTLE</span>
+                </div>
+                <!-- Upshift Paddle -->
+                <button class="paddle-shifter right-paddle" id="paddle-up">
+                    <span class="paddle-text">UP ▶</span>
+                </button>
+            </div>
+        </section>
+
+        <!-- ==================== MODE 2: GT SIM RACING ==================== -->
+        <section id="gt-wheel-view" class="view">
+            <div class="gt-layout">
+                <div class="gt-pedal-col">
+                    <div class="gt-pedal-bar brake" id="gt-brake">
+                        <div class="pedal-fill brake-fill" id="gt-brake-fill"></div>
+                        <span class="pedal-title">BRAKE</span>
+                    </div>
+                </div>
+                <div class="gt-center-cluster">
+                    <div class="gt-dial">
+                        <span class="gt-speed" id="gt-speed">0</span>
+                        <span class="gt-speed-unit">KM/H</span>
+                        <span class="gt-gear" id="gt-gear">N</span>
+                    </div>
+                    <div class="gt-actions">
+                        <button class="gt-btn" id="gt-shift-down">DOWN</button>
+                        <button class="gt-btn gt-handbrake" id="gt-handbrake">HANDBRAKE</button>
+                        <button class="gt-btn" id="gt-shift-up">UP</button>
+                    </div>
+                </div>
+                <div class="gt-pedal-col">
+                    <div class="gt-pedal-bar throttle" id="gt-throttle">
+                        <div class="pedal-fill throttle-fill" id="gt-throttle-fill"></div>
+                        <span class="pedal-title">GAS</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ==================== MODE 3: UNIVERSAL GAMEPAD ==================== -->
+        <section id="gamepad-view" class="view">
+            <div class="gamepad-grid">
+                <!-- Left Stick & D-Pad -->
+                <div class="gamepad-zone left-zone">
+                    <div class="shoulder-btn" id="gp-lb">LB</div>
+                    <div class="trigger-btn" id="gp-lt">LT</div>
+                    <div class="virtual-stick" id="gp-left-stick">
+                        <div class="stick-knob" id="gp-left-knob"></div>
+                    </div>
+                    <div class="dpad-cross">
+                        <button class="dpad-btn up" id="gp-dup">▲</button>
+                        <button class="dpad-btn left" id="gp-dleft">◀</button>
+                        <button class="dpad-btn right" id="gp-dright">▶</button>
+                        <button class="dpad-btn down" id="gp-ddown">▼</button>
+                    </div>
+                </div>
+
+                <!-- Center Buttons -->
+                <div class="gamepad-center">
+                    <button class="gp-mid-btn" id="gp-back">BACK</button>
+                    <button class="gp-guide-btn" id="gp-guide">APEX</button>
+                    <button class="gp-mid-btn" id="gp-start">START</button>
+                </div>
+
+                <!-- Right Stick & ABXY Face Buttons -->
+                <div class="gamepad-zone right-zone">
+                    <div class="shoulder-btn" id="gp-rb">RB</div>
+                    <div class="trigger-btn" id="gp-rt">RT</div>
+                    <div class="abxy-cluster">
+                        <button class="abxy-btn btn-y" id="gp-y">Y</button>
+                        <button class="abxy-btn btn-x" id="gp-x">X</button>
+                        <button class="abxy-btn btn-b" id="gp-b">B</button>
+                        <button class="abxy-btn btn-a" id="gp-a">A</button>
+                    </div>
+                    <div class="virtual-stick" id="gp-right-stick">
+                        <div class="stick-knob" id="gp-right-knob"></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Calibration / Settings Overlay -->
+    <div id="settings-modal" class="modal hidden">
+        <div class="modal-card">
+            <h3>⚙️ ApexWheel Settings</h3>
+            <div class="setting-item">
+                <label>Steering Lock Angle:</label>
+                <select id="lock-angle-select">
+                    <option value="180">180° (Karting / Quick)</option>
+                    <option value="270">270° (Touring)</option>
+                    <option value="360" selected>360° (Authentic F1)</option>
+                    <option value="540">540° (GT3)</option>
+                    <option value="900">900° (Street Car)</option>
+                </select>
+            </div>
+            <div class="setting-item">
+                <label>Steering Deadzone:</label>
+                <input type="range" id="deadzone-slider" min="0" max="0.1" step="0.01" value="0.02">
+                <span id="deadzone-val">2%</span>
+            </div>
+            <div class="setting-item">
+                <label>Linearity (Gamma):</label>
+                <input type="range" id="linearity-slider" min="0.5" max="2.0" step="0.1" value="1.0">
+                <span id="linearity-val">1.0</span>
+            </div>
+            <div class="setting-item">
+                <label>Haptic Vibration:</label>
+                <input type="checkbox" id="haptic-toggle" checked>
+            </div>
+            <button class="modal-close-btn" id="modal-close-btn">Done</button>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
