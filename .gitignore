@@ -19,6 +19,9 @@ ENV/
 
 # Gyropad Reference files
 Gyropad*
+.*tools*
+.*gyropad*
+
 
 # Android
 .gradle/
