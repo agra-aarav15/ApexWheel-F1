@@ -423,12 +423,18 @@ namespace ApexWheel
     }
 
     // =========================================================================
-    // 4. High-Speed Phone Input Receiver (UDP Port 8081)
+    // 4. High-Speed Phone Input Receiver (Native Gyropad Ports 5005/5006/5007 & 8081)
     // =========================================================================
     public class PhoneInputReceiver
     {
-        private UdpClient _udp;
-        private Thread _thread;
+        private UdpClient _udp8081;
+        private UdpClient _udp5005;
+        private UdpClient _udpDiscovery;
+        private TcpListener _tcpPairServer;
+        private Thread _thread8081;
+        private Thread _thread5005;
+        private Thread _threadDiscovery;
+        private Thread _threadPair;
         private bool _running;
         private readonly ViGEmBridge _bridge;
 
@@ -455,13 +461,47 @@ namespace ApexWheel
 
         public void Start(int port)
         {
+            _running = true;
+
+            // 1. Primary Gyropad UDP port 5005
             try
             {
-                _udp = new UdpClient(port);
-                _running = true;
-                _thread = new Thread(ListenLoop);
-                _thread.IsBackground = true;
-                _thread.Start();
+                _udp5005 = new UdpClient(5005);
+                _thread5005 = new Thread(ListenLoop5005);
+                _thread5005.IsBackground = true;
+                _thread5005.Start();
+            }
+            catch { }
+
+            // 2. Web client UDP port 8081
+            try
+            {
+                _udp8081 = new UdpClient(port);
+                _thread8081 = new Thread(ListenLoop8081);
+                _thread8081.IsBackground = true;
+                _thread8081.Start();
+            }
+            catch { }
+
+            // 3. Gyropad Discovery UDP port 5006
+            try
+            {
+                _udpDiscovery = new UdpClient();
+                _udpDiscovery.EnableBroadcast = true;
+                _threadDiscovery = new Thread(DiscoveryBroadcastLoop);
+                _threadDiscovery.IsBackground = true;
+                _threadDiscovery.Start();
+            }
+            catch { }
+
+            // 4. Gyropad TCP Pair Server on port 5007
+            try
+            {
+                _tcpPairServer = new TcpListener(IPAddress.Any, 5007);
+                _tcpPairServer.Start();
+                _threadPair = new Thread(PairServerLoop);
+                _threadPair.IsBackground = true;
+                _threadPair.Start();
             }
             catch { }
         }
@@ -469,26 +509,170 @@ namespace ApexWheel
         public void Stop()
         {
             _running = false;
-            if (_udp != null) { _udp.Close(); _udp = null; }
+            if (_udp5005 != null) { try { _udp5005.Close(); } catch { } _udp5005 = null; }
+            if (_udp8081 != null) { try { _udp8081.Close(); } catch { } _udp8081 = null; }
+            if (_udpDiscovery != null) { try { _udpDiscovery.Close(); } catch { } _udpDiscovery = null; }
+            if (_tcpPairServer != null) { try { _tcpPairServer.Stop(); } catch { } _tcpPairServer = null; }
         }
 
-        private void ListenLoop()
+        private void ListenLoop5005()
         {
             IPEndPoint remote = new IPEndPoint(IPAddress.Any, 0);
-            while (_running)
+            while (_running && _udp5005 != null)
             {
                 try
                 {
-                    byte[] bytes = _udp.Receive(ref remote);
-                    if (bytes == null || bytes.Length == 0) continue;
-                    string msg = Encoding.ASCII.GetString(bytes);
-                    ProcessMessage(msg);
+                    byte[] bytes = _udp5005.Receive(ref remote);
+                    if (bytes != null && bytes.Length > 0)
+                    {
+                        ProcessRawBytes(bytes);
+                    }
                 }
                 catch { }
             }
         }
 
+        private void ListenLoop8081()
+        {
+            IPEndPoint remote = new IPEndPoint(IPAddress.Any, 0);
+            while (_running && _udp8081 != null)
+            {
+                try
+                {
+                    byte[] bytes = _udp8081.Receive(ref remote);
+                    if (bytes != null && bytes.Length > 0)
+                    {
+                        ProcessRawBytes(bytes);
+                    }
+                }
+                catch { }
+            }
+        }
+
+        private void DiscoveryBroadcastLoop()
+        {
+            IPEndPoint target = new IPEndPoint(IPAddress.Broadcast, 5006);
+            byte[] announce = Encoding.ASCII.GetBytes("PW2 ANNOUNCE PC ApexWheel 5007\n");
+            while (_running && _udpDiscovery != null)
+            {
+                try
+                {
+                    _udpDiscovery.Send(announce, announce.Length, target);
+                }
+                catch { }
+                Thread.Sleep(1500);
+            }
+        }
+
+        private void PairServerLoop()
+        {
+            while (_running && _tcpPairServer != null)
+            {
+                try
+                {
+                    TcpClient client = _tcpPairServer.AcceptTcpClient();
+                    ThreadPool.QueueUserWorkItem((state) =>
+                    {
+                        try
+                        {
+                            using (var stream = client.GetStream())
+                            {
+                                byte[] buf = new byte[256];
+                                int read = stream.Read(buf, 0, buf.Length);
+                                byte[] ok = Encoding.ASCII.GetBytes("OK\n");
+                                stream.Write(ok, 0, ok.Length);
+                            }
+                        }
+                        catch { }
+                        finally { try { client.Close(); } catch { } }
+                    });
+                }
+                catch { }
+            }
+        }
+
+        public void ProcessRawBytes(byte[] bytes)
+        {
+            if (bytes == null || bytes.Length == 0) return;
+
+            // Gyropad Native Racepad Binary Packet: 'P' (0x50)
+            if (bytes[0] == 80 && bytes.Length >= 16)
+            {
+                // Bytes 4-5: Steering angle (short, Little Endian)
+                short sSteer = BitConverter.ToInt16(bytes, 4);
+                double rawSteer = Math.Max(-1.0, Math.Min(1.0, sSteer / 32767.0));
+
+                // Bytes 6-7: Gas/Throttle (ushort, Little Endian)
+                ushort uGas = BitConverter.ToUInt16(bytes, 6);
+                double rawGas = Math.Max(0.0, Math.Min(1.0, uGas / 65535.0));
+
+                // Bytes 8-9: Brake (ushort, Little Endian)
+                ushort uBrake = BitConverter.ToUInt16(bytes, 8);
+                double rawBrake = Math.Max(0.0, Math.Min(1.0, uBrake / 65535.0));
+
+                // Bytes 10-11: Clutch (ushort, Little Endian)
+                ushort uClutch = BitConverter.ToUInt16(bytes, 10);
+                double rawClutch = Math.Max(0.0, Math.Min(1.0, uClutch / 65535.0));
+
+                // Bytes 14-15: Buttons bitmask (ushort)
+                ushort btnMask = BitConverter.ToUInt16(bytes, 14);
+
+                Steer = rawSteer;
+                Throttle = rawGas;
+                Brake = rawBrake;
+                Clutch = rawClutch;
+                Buttons = btnMask;
+                PacketsReceived++;
+                LastInputTime = DateTime.UtcNow;
+
+                _bridge.Feed(Steer, 0.0, 0.0, 0.0, Brake, Throttle, Buttons);
+                return;
+            }
+
+            // Gyropad Native Gamepad Binary Packet: 'G' (0x47)
+            if (bytes[0] == 71 && bytes.Length >= 18)
+            {
+                short lx = BitConverter.ToInt16(bytes, 4);
+                short ly = BitConverter.ToInt16(bytes, 6);
+                short rx = BitConverter.ToInt16(bytes, 8);
+                short ry = BitConverter.ToInt16(bytes, 10);
+                ushort lt = BitConverter.ToUInt16(bytes, 12);
+                ushort rt = BitConverter.ToUInt16(bytes, 14);
+                ushort btn = BitConverter.ToUInt16(bytes, 16);
+
+                double nLx = Math.Max(-1.0, Math.Min(1.0, lx / 32767.0));
+                double nLy = Math.Max(-1.0, Math.Min(1.0, ly / 32767.0));
+                double nRx = Math.Max(-1.0, Math.Min(1.0, rx / 32767.0));
+                double nRy = Math.Max(-1.0, Math.Min(1.0, ry / 32767.0));
+                double nLt = Math.Max(0.0, Math.Min(1.0, lt / 65535.0));
+                double nRt = Math.Max(0.0, Math.Min(1.0, rt / 65535.0));
+
+                Steer = nLx;
+                Throttle = nRt;
+                Brake = nLt;
+                Buttons = btn;
+                PacketsReceived++;
+                LastInputTime = DateTime.UtcNow;
+
+                _bridge.Feed(nLx, nLy, nRx, nRy, nLt, nRt, btn);
+                return;
+            }
+
+            // Fallback: Text format (Web client)
+            try
+            {
+                string msg = Encoding.ASCII.GetString(bytes);
+                ProcessTextMessage(msg);
+            }
+            catch { }
+        }
+
         public void ProcessMessage(string msg)
+        {
+            ProcessTextMessage(msg);
+        }
+
+        private void ProcessTextMessage(string msg)
         {
             if (string.IsNullOrEmpty(msg)) return;
 
