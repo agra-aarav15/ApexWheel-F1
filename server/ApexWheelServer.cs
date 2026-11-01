@@ -435,11 +435,16 @@ namespace ApexWheel
         private TcpListener _tcpPairServer;
         private Thread _thread8081;
         private Thread _thread5005;
+        private Thread _threadHeartbeat5005;
         private Thread _threadDiscovery;
         private Thread _threadDiscoveryListen;
         private Thread _threadPair;
         private bool _running;
         private readonly ViGEmBridge _bridge;
+
+        private IPEndPoint _lastPhoneRemote = null;
+        private long _lastPhonePacketTicks = 0;
+        private readonly object _phoneLock = new object();
 
         public double Steer { get; private set; }
         public double Throttle { get; private set; }
@@ -470,9 +475,22 @@ namespace ApexWheel
             try
             {
                 _udp5005 = new UdpClient(5005);
+                try
+                {
+                    _udp5005.Client.ReceiveBufferSize = 2 * 1024 * 1024;
+                    _udp5005.Client.SendBufferSize = 1024 * 1024;
+                    const int SIO_UDP_CONNRESET = -1744830452;
+                    _udp5005.Client.IOControl((IOControlCode)SIO_UDP_CONNRESET, new byte[] { 0, 0, 0, 0 }, null);
+                }
+                catch { }
+
                 _thread5005 = new Thread(ListenLoop5005);
                 _thread5005.IsBackground = true;
                 _thread5005.Start();
+
+                _threadHeartbeat5005 = new Thread(HeartbeatLoop5005);
+                _threadHeartbeat5005.IsBackground = true;
+                _threadHeartbeat5005.Start();
             }
             catch { }
 
@@ -536,6 +554,11 @@ namespace ApexWheel
         private void ListenLoop5005()
         {
             IPEndPoint remote = new IPEndPoint(IPAddress.Any, 0);
+            byte[] feedbackPacket = new byte[16];
+            feedbackPacket[0] = 0x54; // 'T' (Telemetry/Heartbeat ACK)
+            feedbackPacket[1] = 0x02; // Gyropad protocol ACK
+            long lastImmediateAck = 0;
+
             while (_running && _udp5005 != null)
             {
                 try
@@ -543,10 +566,57 @@ namespace ApexWheel
                     byte[] bytes = _udp5005.Receive(ref remote);
                     if (bytes != null && bytes.Length > 0)
                     {
+                        lock (_phoneLock)
+                        {
+                            _lastPhoneRemote = remote;
+                            _lastPhonePacketTicks = Stopwatch.GetTimestamp();
+                        }
+
                         ProcessRawBytes(bytes);
+
+                        // Send immediate heartbeat ACK back to phone at ~20Hz (every 50ms)
+                        long now = Stopwatch.GetTimestamp();
+                        if ((now - lastImmediateAck) >= (Stopwatch.Frequency / 20))
+                        {
+                            lastImmediateAck = now;
+                            try { _udp5005.Send(feedbackPacket, feedbackPacket.Length, remote); } catch { }
+                        }
                     }
                 }
                 catch { }
+            }
+        }
+
+        private void HeartbeatLoop5005()
+        {
+            byte[] feedbackPacket = new byte[16];
+            feedbackPacket[0] = 0x54; // 'T'
+            feedbackPacket[1] = 0x02; // Gyropad protocol ACK
+
+            while (_running)
+            {
+                try
+                {
+                    IPEndPoint target = null;
+                    long lastTicks = 0;
+                    lock (_phoneLock)
+                    {
+                        target = _lastPhoneRemote;
+                        lastTicks = _lastPhonePacketTicks;
+                    }
+
+                    if (target != null && _udp5005 != null)
+                    {
+                        long elapsedSec = (Stopwatch.GetTimestamp() - lastTicks) / Stopwatch.Frequency;
+                        if (elapsedSec < 60)
+                        {
+                            _udp5005.Send(feedbackPacket, feedbackPacket.Length, target);
+                        }
+                    }
+                }
+                catch { }
+
+                Thread.Sleep(100); // 10Hz heartbeat ping to keep phone's watchdog refreshed
             }
         }
 
@@ -686,6 +756,8 @@ namespace ApexWheel
                         try
                         {
                             client.NoDelay = true;
+                            client.ReceiveTimeout = 2000;
+                            client.SendTimeout = 2000;
                             using (var stream = client.GetStream())
                             {
                                 byte[] buf = new byte[256];
