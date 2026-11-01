@@ -19,28 +19,34 @@ namespace ApexWheel
     // =========================================================================
     public static class Theme
     {
-        public static readonly Color Bg          = Color.FromArgb(4, 8, 16);           // Literally darkest navy
-        public static readonly Color Surface     = Color.FromArgb(8, 16, 32);          // Deep navy surface
-        public static readonly Color SurfaceHi   = Color.FromArgb(14, 26, 50);         // Navy highlight
-        public static readonly Color Stroke      = Color.FromArgb(24, 42, 80);         // Navy border
-        public static readonly Color Ink         = Color.FromArgb(240, 246, 255);      // Ice white text
+        public static readonly Color Bg          = Color.FromArgb(6, 10, 18);           // Darkest motorsport navy
+        public static readonly Color Surface     = Color.FromArgb(12, 18, 30);          // Deep cockpit card
+        public static readonly Color SurfaceHi   = Color.FromArgb(20, 30, 48);         // Highlight
+        public static readonly Color Stroke      = Color.FromArgb(28, 44, 72);         // Navy border
+        public static readonly Color StrokeHi    = Color.FromArgb(37, 99, 235);        // Active accent border
+        public static readonly Color Ink         = Color.FromArgb(248, 250, 252);      // Ice white text
         public static readonly Color Dim         = Color.FromArgb(148, 163, 184);      // Slate text
         public static readonly Color Faint       = Color.FromArgb(71, 85, 105);        // Muted navy slate
-        public static readonly Color Accent      = Color.FromArgb(37, 99, 235);        // #2563EB Racing Navy Blue
-        public static readonly Color AccentDeep  = Color.FromArgb(29, 78, 216);        // #1D4ED8 Deep Navy Blue
-        public static readonly Color Throttle    = Color.FromArgb(37, 99, 235);        // Racing Navy Blue Gas
+        public static readonly Color Accent      = Color.FromArgb(0, 240, 255);        // #00F0FF Electric Cyan
+        public static readonly Color AccentDeep  = Color.FromArgb(37, 99, 235);        // #2563EB Racing Navy Blue
+        public static readonly Color Throttle    = Color.FromArgb(0, 245, 160);        // Electric Neon Green/Cyan Gas
         public static readonly Color Brake       = Color.FromArgb(239, 68, 68);        // #EF4444 Racing Red Brake
         public static readonly Color Good        = Color.FromArgb(16, 185, 129);       // Emerald Green
         public static readonly Color Warn        = Color.FromArgb(245, 158, 11);       // Amber
         public static readonly Color F1Red       = Color.FromArgb(225, 6, 0);          // F1 Red
+        public static readonly Color Purple      = Color.FromArgb(168, 85, 247);       // Violet
 
-        public static readonly Font H1      = new Font("Segoe UI", 16f, FontStyle.Bold);
-        public static readonly Font Title   = new Font("Segoe UI", 12f, FontStyle.Bold);
-        public static readonly Font Body    = new Font("Segoe UI", 9.5f, FontStyle.Regular);
-        public static readonly Font BodyB   = new Font("Segoe UI", 9.5f, FontStyle.Bold);
-        public static readonly Font Small   = new Font("Segoe UI", 8.5f, FontStyle.Regular);
-        public static readonly Font Mono    = new Font("Consolas", 9.5f, FontStyle.Regular);
-        public static readonly Font MonoB   = new Font("Consolas", 14f, FontStyle.Bold);
+        public static readonly Font H1         = new Font("Segoe UI", 15f, FontStyle.Bold);
+        public static readonly Font Title      = new Font("Segoe UI", 11.5f, FontStyle.Bold);
+        public static readonly Font Body       = new Font("Segoe UI", 9.5f, FontStyle.Regular);
+        public static readonly Font BodyB      = new Font("Segoe UI", 9.5f, FontStyle.Bold);
+        public static readonly Font Small      = new Font("Segoe UI", 8.5f, FontStyle.Regular);
+        public static readonly Font SmallB     = new Font("Segoe UI", 8.5f, FontStyle.Bold);
+        public static readonly Font BadgeFont  = new Font("Segoe UI", 7.5f, FontStyle.Bold);
+        public static readonly Font Mono       = new Font("Consolas", 9.5f, FontStyle.Regular);
+        public static readonly Font MonoB      = new Font("Consolas", 13f, FontStyle.Bold);
+        public static readonly Font LargeDash  = new Font("Consolas", 28f, FontStyle.Bold);
+        public static readonly Font SpeedFont  = new Font("Consolas", 13f, FontStyle.Bold);
     }
 
     // =========================================================================
@@ -937,13 +943,21 @@ namespace ApexWheel
         }
     }
 
+
     // =========================================================================
-    // 5. Gyropad-Style Interactive Live PadDiagram
+    // 5. Ultimate F1 Cockpit Interactive Animated PadDiagram
     // =========================================================================
     public class PadDiagram : Control
     {
         private readonly PhoneInputReceiver _input;
         private readonly F1TelemetryListener _telemetry;
+
+        // Smooth 60FPS animation interpolators
+        private float _smoothSteer = 0f;
+        private float _smoothThrottle = 0f;
+        private float _smoothBrake = 0f;
+        private float _animTime = 0f;
+        private float _pulsePhase = 0f;
 
         public PadDiagram(PhoneInputReceiver input, F1TelemetryListener telemetry)
         {
@@ -952,152 +966,355 @@ namespace ApexWheel
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer, true);
         }
 
+        public void UpdateFrame(float dt)
+        {
+            _animTime += dt;
+            _pulsePhase += dt * 4f;
+
+            // Smooth linear interpolation (lerp) for liquid 60 FPS motion
+            _smoothSteer += (float)(_input.Steer - _smoothSteer) * 0.22f;
+            _smoothThrottle += (float)(_input.Throttle - _smoothThrottle) * 0.28f;
+            _smoothBrake += (float)(_input.Brake - _smoothBrake) * 0.28f;
+
+            Invalidate();
+        }
+
         protected override void OnPaint(PaintEventArgs e)
         {
             Graphics g = e.Graphics;
             g.SmoothingMode = SmoothingMode.AntiAlias;
+            g.PixelOffsetMode = PixelOffsetMode.HighQuality;
             g.Clear(Theme.Bg);
 
             int w = Width;
             int h = Height;
 
-            // Draw Phone Outline (Bezel)
-            int phoneW = w - 20;
-            int phoneH = h - 20;
-            Rectangle phoneRect = new Rectangle(10, 10, phoneW, phoneH);
-
-            using (GraphicsPath path = GetRoundedRect(phoneRect, 24))
+            // Outer Cockpit Frame
+            Rectangle cockpitRect = new Rectangle(8, 8, w - 16, h - 16);
+            using (GraphicsPath path = GetRoundedRect(cockpitRect, 18))
             {
                 using (SolidBrush b = new SolidBrush(Theme.Surface)) g.FillPath(b, path);
-                using (Pen p = new Pen(Theme.Stroke, 2f)) g.DrawPath(p, path);
-            }
-
-            // Draw Left Pedal (Brake - Neon Red/Pink)
-            int pedalW = (int)(phoneW * 0.14);
-            int pedalH = (int)(phoneH * 0.65);
-            int pedalY = (int)(phoneH * 0.22);
-
-            Rectangle brakeRect = new Rectangle(phoneRect.X + 16, phoneRect.Y + pedalY, pedalW, pedalH);
-            DrawPedal(g, brakeRect, "BRAKE", (float)_input.Brake, Theme.Brake);
-
-            // Draw Right Pedal (Throttle - Neon Purple)
-            Rectangle throttleRect = new Rectangle(phoneRect.Right - pedalW - 16, phoneRect.Y + pedalY, pedalW, pedalH);
-            DrawPedal(g, throttleRect, "GAS", (float)_input.Throttle, Theme.Throttle);
-
-            // Draw Steering Arc in Center
-            int arcCenterW = phoneW / 2;
-            int arcCenterH = phoneH / 2;
-            int arcRadius = (int)(phoneH * 0.38);
-            Rectangle arcBounds = new Rectangle(phoneRect.X + arcCenterW - arcRadius, phoneRect.Y + arcCenterH - arcRadius - 10, arcRadius * 2, arcRadius * 2);
-
-            using (Pen p = new Pen(Theme.Stroke, 4f))
-            {
-                g.DrawArc(p, arcBounds, 140, 260);
-            }
-
-            // Steering needle based on angle
-            double steerNorm = _input.Steer; // -1.0 to 1.0
-            float steerAngle = 270f + (float)(steerNorm * 90f);
-            float rad = steerAngle * (float)Math.PI / 180f;
-            float nX = (phoneRect.X + arcCenterW) + (float)Math.Cos(rad) * (arcRadius - 15);
-            float nY = (phoneRect.Y + arcCenterH - 10) + (float)Math.Sin(rad) * (arcRadius - 15);
-
-            using (Pen p = new Pen(Theme.Accent, 3f))
-            {
-                g.DrawLine(p, phoneRect.X + arcCenterW, phoneRect.Y + arcCenterH - 10, nX, nY);
-            }
-
-            // Draw Center Gear & Telemetry
-            string gearStr = _telemetry.Data.Gear == -1 ? "R" : (_telemetry.Data.Gear == 0 ? "N" : _telemetry.Data.Gear.ToString());
-            string speedStr = string.Format("{0} KM/H", _telemetry.Data.SpeedKmh);
-
-            using (SolidBrush b = new SolidBrush(Theme.Warn))
-            {
-                g.DrawString(gearStr, Theme.MonoB, b, phoneRect.X + arcCenterW - 10, phoneRect.Y + arcCenterH - 24);
-            }
-            using (SolidBrush b = new SolidBrush(Theme.Ink))
-            {
-                g.DrawString(speedStr, Theme.Small, b, phoneRect.X + arcCenterW - 24, phoneRect.Y + arcCenterH + 12);
-            }
-
-            // Top F1 Buttons (Pills)
-            int pillW = (int)(phoneW * 0.13);
-            int pillH = 26;
-            int topY = phoneRect.Y + 16;
-
-            DrawPillButton(g, new Rectangle(phoneRect.X + 16, topY, pillW, pillH), "ERS / OT", (_input.Buttons & ViGEmBridge.LEFT_THUMB) != 0);
-            DrawPillButton(g, new Rectangle(phoneRect.X + 24 + pillW, topY, pillW, pillH), "PIT", (_input.Buttons & ViGEmBridge.DPAD_DOWN) != 0);
-            DrawPillButton(g, new Rectangle(phoneRect.Right - (pillW * 2) - 24, topY, pillW, pillH), "◀ DOWN", (_input.Buttons & ViGEmBridge.LEFT_SHOULDER) != 0);
-            DrawPillButton(g, new Rectangle(phoneRect.Right - pillW - 16, topY, pillW, pillH), "UP ▶", (_input.Buttons & ViGEmBridge.RIGHT_SHOULDER) != 0);
-
-            // Center Status Pill
-            int statusW = (int)(phoneW * 0.28);
-            Rectangle statusPill = new Rectangle(phoneRect.X + arcCenterW - (statusW / 2), topY, statusW, pillH);
-            using (GraphicsPath path = GetRoundedRect(statusPill, 8))
-            {
-                using (SolidBrush b = new SolidBrush(Theme.SurfaceHi)) g.FillPath(b, path);
-                using (Pen p = new Pen(Theme.Stroke, 1f)) g.DrawPath(p, path);
-            }
-            using (SolidBrush b = new SolidBrush(_telemetry.Data.Active ? Theme.Good : Theme.Dim))
-            {
-                string statusText = _telemetry.Data.Active ? "● F1 25 LIVE TELEMETRY" : "○ F1 WAITING (PORT 20777)";
-                g.DrawString(statusText, Theme.Small, b, statusPill.X + 14, statusPill.Y + 6);
-            }
-        }
-
-        private void DrawPedal(Graphics g, Rectangle r, string label, float fillVal, Color fillCol)
-        {
-            using (GraphicsPath path = GetRoundedRect(r, 12))
-            {
-                using (SolidBrush b = new SolidBrush(Theme.SurfaceHi)) g.FillPath(b, path);
                 using (Pen p = new Pen(Theme.Stroke, 1.5f)) g.DrawPath(p, path);
             }
 
-            if (fillVal > 0.01f)
+            // Top Status Header Pill
+            DrawTopStatusPill(g, cockpitRect);
+
+            // Left Pedal: Racing Brake (Glowing Coral/Red)
+            int pedalW = 54;
+            int pedalH = (int)(cockpitRect.Height * 0.68);
+            int pedalY = cockpitRect.Y + (cockpitRect.Height - pedalH) / 2 + 10;
+            Rectangle brakeRect = new Rectangle(cockpitRect.X + 20, pedalY, pedalW, pedalH);
+            DrawPedal(g, brakeRect, "BRAKE", _smoothBrake, Color.FromArgb(239, 68, 68), Color.FromArgb(244, 63, 94));
+
+            // Right Pedal: Racing Gas (Glowing Cyan/Emerald)
+            Rectangle throttleRect = new Rectangle(cockpitRect.Right - pedalW - 20, pedalY, pedalW, pedalH);
+            DrawPedal(g, throttleRect, "GAS", _smoothThrottle, Color.FromArgb(16, 185, 129), Color.FromArgb(0, 240, 255));
+
+            // Center: Formula 1 Steering Wheel Dashboard
+            int wheelCenterX = cockpitRect.X + cockpitRect.Width / 2;
+            int wheelCenterY = cockpitRect.Y + cockpitRect.Height / 2 + 14;
+            DrawF1SteeringWheel(g, wheelCenterX, wheelCenterY);
+        }
+
+        private void DrawTopStatusPill(Graphics g, Rectangle bounds)
+        {
+            int pillW = Math.Min(420, bounds.Width - 160);
+            int pillH = 30;
+            Rectangle pillRect = new Rectangle(bounds.X + (bounds.Width - pillW) / 2, bounds.Y + 14, pillW, pillH);
+
+            using (GraphicsPath path = GetRoundedRect(pillRect, 10))
             {
-                int fillHeight = (int)(r.Height * Math.Min(1.0f, fillVal));
-                Rectangle fillR = new Rectangle(r.X + 2, r.Bottom - fillHeight - 2, r.Width - 4, fillHeight);
-                using (GraphicsPath fpath = GetRoundedRect(fillR, 10))
+                using (SolidBrush b = new SolidBrush(Theme.SurfaceHi)) g.FillPath(b, path);
+                using (Pen p = new Pen(Theme.Stroke, 1.2f)) g.DrawPath(p, path);
+            }
+
+            bool connected = _input.PacketsReceived > 0;
+            // Pulsing dot
+            int alpha = connected ? (int)(180 + 75 * Math.Sin(_pulsePhase)) : 120;
+            if (alpha < 60) alpha = 60; if (alpha > 255) alpha = 255;
+            Color dotCol = connected ? Color.FromArgb(alpha, 16, 185, 129) : Color.FromArgb(alpha, 245, 158, 11);
+
+            int dotR = 8;
+            Rectangle dotRect = new Rectangle(pillRect.X + 14, pillRect.Y + (pillH - dotR) / 2, dotR, dotR);
+            using (SolidBrush b = new SolidBrush(dotCol)) g.FillEllipse(b, dotRect);
+
+            string statusText = connected ?
+                string.Format("CONNECTED: ASUS PC COMPANION • {0} PKTS", _input.PacketsReceived) :
+                "READY: WAITING FOR APEXWHEEL APP (PORT 5005 / 5006)";
+
+            using (SolidBrush b = new SolidBrush(connected ? Theme.Ink : Theme.Dim))
+            {
+                var sf = new StringFormat { LineAlignment = StringAlignment.Center };
+                g.DrawString(statusText, Theme.SmallB, b, new RectangleF(pillRect.X + 28, pillRect.Y, pillRect.Width - 32, pillH), sf);
+            }
+        }
+
+        private void DrawPedal(Graphics g, Rectangle r, string label, float fillVal, Color colBase, Color colGlow)
+        {
+            // Pedal Backplate (Dark Carbon)
+            using (GraphicsPath path = GetRoundedRect(r, 12))
+            {
+                using (SolidBrush b = new SolidBrush(Color.FromArgb(12, 17, 28))) g.FillPath(b, path);
+                using (Pen p = new Pen(Theme.Stroke, 1.5f)) g.DrawPath(p, path);
+            }
+
+            // Metal Anti-Slip Grips (Notches)
+            int notchCount = 6;
+            int notchSpacing = (r.Height - 30) / notchCount;
+            using (Pen np = new Pen(Color.FromArgb(28, 40, 62), 2f))
+            {
+                for (int i = 0; i < notchCount; i++)
                 {
-                    using (SolidBrush b = new SolidBrush(fillCol)) g.FillPath(b, fpath);
+                    int ny = r.Y + 16 + i * notchSpacing;
+                    g.DrawLine(np, r.X + 8, ny, r.Right - 8, ny);
                 }
             }
 
+            // Active Glowing Fill
+            fillVal = Math.Max(0f, Math.Min(1f, fillVal));
+            if (fillVal > 0.005f)
+            {
+                int fillHeight = (int)((r.Height - 4) * fillVal);
+                if (fillHeight < 6) fillHeight = 6;
+                Rectangle fillR = new Rectangle(r.X + 3, r.Bottom - fillHeight - 3, r.Width - 6, fillHeight);
+
+                using (GraphicsPath fpath = GetRoundedRect(fillR, 10))
+                {
+                    using (LinearGradientBrush lgb = new LinearGradientBrush(fillR, colBase, colGlow, LinearGradientMode.Vertical))
+                    {
+                        g.FillPath(lgb, fpath);
+                    }
+                }
+
+                // Glowing Horizon Cap Line
+                int capY = fillR.Y;
+                using (Pen cp = new Pen(Color.White, 2.5f))
+                {
+                    g.DrawLine(cp, fillR.X + 4, capY, fillR.Right - 4, capY);
+                }
+            }
+
+            // Percentage & Label
+            string pctStr = string.Format("{0:0}%", fillVal * 100f);
             using (SolidBrush b = new SolidBrush(Theme.Ink))
             {
-                g.DrawString(label, Theme.BodyB, b, r.X + 10, r.Bottom - 26);
+                var sf = new StringFormat { Alignment = StringAlignment.Center };
+                g.DrawString(label, Theme.SmallB, b, r.X + r.Width / 2, r.Bottom - 26, sf);
+                using (SolidBrush pb = new SolidBrush(fillVal > 0.01f ? colGlow : Theme.Dim))
+                {
+                    g.DrawString(pctStr, Theme.SmallB, pb, r.X + r.Width / 2, r.Y + 8, sf);
+                }
             }
         }
 
-                private void DrawCircleButton(Graphics g, Rectangle r, string label, bool pressed, Color activeCol)
+        private void DrawF1SteeringWheel(Graphics g, int cx, int cy)
         {
-            Color bg = pressed ? activeCol : Theme.SurfaceHi;
-            Color fg = pressed ? Color.Black : Theme.Ink;
-            Color border = pressed ? activeCol : Theme.Stroke;
+            // Rotation angle from smooth steer (-1.0 to 1.0) -> -90 deg to +90 deg
+            float steerAngle = _smoothSteer * 90f;
 
-            using (SolidBrush b = new SolidBrush(bg)) g.FillEllipse(b, r);
-            using (Pen p = new Pen(border, pressed ? 2f : 1f)) g.DrawEllipse(p, r);
+            GraphicsState state = g.Save();
+            g.TranslateTransform(cx, cy);
+            g.RotateTransform(steerAngle);
 
-            using (SolidBrush tb = new SolidBrush(fg))
+            // 1. Shift Paddles Behind Wheel
+            bool lbPressed = (_input.Buttons & ViGEmBridge.LEFT_SHOULDER) != 0;
+            bool rbPressed = (_input.Buttons & ViGEmBridge.RIGHT_SHOULDER) != 0;
+
+            int paddleW = 22;
+            int paddleH = 68;
+            int paddleY = -paddleH / 2;
+
+            // Downshift Paddle (Left)
+            int leftPadX = lbPressed ? -164 : -156;
+            Rectangle leftPadRect = new Rectangle(leftPadX, paddleY, paddleW, paddleH);
+            using (GraphicsPath pth = GetRoundedRect(leftPadRect, 8))
+            {
+                using (SolidBrush b = new SolidBrush(lbPressed ? Color.FromArgb(59, 130, 246) : Color.FromArgb(18, 26, 42))) g.FillPath(b, pth);
+                using (Pen p = new Pen(lbPressed ? Color.White : Theme.Stroke, 1.5f)) g.DrawPath(p, pth);
+            }
+
+            // Upshift Paddle (Right)
+            int rightPadX = rbPressed ? 142 : 134;
+            Rectangle rightPadRect = new Rectangle(rightPadX, paddleY, paddleW, paddleH);
+            using (GraphicsPath pth = GetRoundedRect(rightPadRect, 8))
+            {
+                using (SolidBrush b = new SolidBrush(rbPressed ? Color.FromArgb(0, 240, 255) : Color.FromArgb(18, 26, 42))) g.FillPath(b, pth);
+                using (Pen p = new Pen(rbPressed ? Color.White : Theme.Stroke, 1.5f)) g.DrawPath(p, pth);
+            }
+
+            // 2. F1 Butterfly Yoke Rim & Ergonomic Grips
+            // Outer Rim Crossbars
+            Rectangle topBar = new Rectangle(-120, -68, 240, 26);
+            Rectangle botBar = new Rectangle(-120, 42, 240, 26);
+            using (GraphicsPath pth = GetRoundedRect(topBar, 8))
+            {
+                using (SolidBrush b = new SolidBrush(Color.FromArgb(15, 22, 36))) g.FillPath(b, pth);
+                using (Pen p = new Pen(Theme.Stroke, 1.5f)) g.DrawPath(p, pth);
+            }
+            using (GraphicsPath pth = GetRoundedRect(botBar, 8))
+            {
+                using (SolidBrush b = new SolidBrush(Color.FromArgb(15, 22, 36))) g.FillPath(b, pth);
+                using (Pen p = new Pen(Theme.Stroke, 1.5f)) g.DrawPath(p, pth);
+            }
+
+            // Left Hand Grip (Contoured Textured Leather)
+            Rectangle leftGrip = new Rectangle(-148, -62, 38, 124);
+            using (GraphicsPath pth = GetRoundedRect(leftGrip, 16))
+            {
+                using (SolidBrush b = new SolidBrush(Color.FromArgb(20, 28, 46))) g.FillPath(b, pth);
+                using (Pen p = new Pen(Theme.AccentDeep, 1.5f)) g.DrawPath(p, pth);
+            }
+            // Right Hand Grip
+            Rectangle rightGrip = new Rectangle(110, -62, 38, 124);
+            using (GraphicsPath pth = GetRoundedRect(rightGrip, 16))
+            {
+                using (SolidBrush b = new SolidBrush(Color.FromArgb(20, 28, 46))) g.FillPath(b, pth);
+                using (Pen p = new Pen(Theme.AccentDeep, 1.5f)) g.DrawPath(p, pth);
+            }
+
+            // Grip Perforations / Stitching lines
+            using (Pen sp = new Pen(Color.FromArgb(35, 50, 80), 1f))
+            {
+                for (int y = -45; y <= 45; y += 12)
+                {
+                    g.DrawLine(sp, -142, y, -116, y);
+                    g.DrawLine(sp, 116, y, 142, y);
+                }
+            }
+
+            // 3. Central Chassis Hub Plate (Brushed Titanium Carbon)
+            Rectangle hubRect = new Rectangle(-94, -68, 188, 136);
+            using (GraphicsPath pth = GetRoundedRect(hubRect, 16))
+            {
+                using (SolidBrush b = new SolidBrush(Color.FromArgb(10, 16, 28))) g.FillPath(b, pth);
+                using (Pen p = new Pen(Theme.StrokeHi, 1.8f)) g.DrawPath(p, pth);
+            }
+
+            // 4. Face Buttons (ERS, DRS, PIT, RADIO)
+            bool otPressed = (_input.Buttons & ViGEmBridge.LEFT_THUMB) != 0;
+            bool drsPressed = (_input.Buttons & ViGEmBridge.A) != 0 || _telemetry.Data.DrsActive;
+            bool pitPressed = (_input.Buttons & ViGEmBridge.DPAD_DOWN) != 0;
+            bool radioPressed = (_input.Buttons & ViGEmBridge.Y) != 0;
+
+            DrawWheelButton(g, new Rectangle(-84, -28, 38, 22), "OT", otPressed, Color.FromArgb(245, 158, 11));
+            DrawWheelButton(g, new Rectangle(46, -28, 38, 22), "DRS", drsPressed, Color.FromArgb(16, 185, 129));
+            DrawWheelButton(g, new Rectangle(-84, 4, 38, 22), "PIT", pitPressed, Color.FromArgb(168, 85, 247));
+            DrawWheelButton(g, new Rectangle(46, 4, 38, 22), "RAD", radioPressed, Color.FromArgb(6, 182, 212));
+
+            // 5. Integrated Digital F1 LCD Cockpit Dash
+            Rectangle lcdRect = new Rectangle(-44, -58, 88, 116);
+            using (GraphicsPath pth = GetRoundedRect(lcdRect, 10))
+            {
+                using (SolidBrush b = new SolidBrush(Color.FromArgb(3, 6, 12))) g.FillPath(b, pth);
+                using (Pen p = new Pen(Color.FromArgb(35, 52, 85), 1.5f)) g.DrawPath(p, pth);
+            }
+
+            // Top 15 Rev LEDs (Shift Lights)
+            DrawRevLeds(g, -38, -48, 76);
+
+            // Big Central Gear Number
+            string gearText = _telemetry.Data.Gear == -1 ? "R" : (_telemetry.Data.Gear == 0 ? "N" : _telemetry.Data.Gear.ToString());
+            Color gearCol = _telemetry.Data.Gear == -1 ? Color.FromArgb(239, 68, 68) :
+                            (_telemetry.Data.Gear == 0 ? Color.FromArgb(16, 185, 129) : Color.FromArgb(240, 246, 255));
+
+            using (SolidBrush gb = new SolidBrush(gearCol))
             {
                 var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
-                g.DrawString(label, Theme.BodyB, tb, new RectangleF(r.X, r.Y, r.Width, r.Height), sf);
+                g.DrawString(gearText, Theme.LargeDash, gb, new RectangleF(-40, -32, 80, 48), sf);
+            }
+
+            // Speed KM/H Readout
+            int speedKmh = _telemetry.Data.Active ? _telemetry.Data.SpeedKmh : (int)(_smoothThrottle * 315);
+            string spdStr = speedKmh.ToString();
+            using (SolidBrush sb = new SolidBrush(Color.FromArgb(0, 240, 255)))
+            {
+                var sf = new StringFormat { Alignment = StringAlignment.Center };
+                g.DrawString(spdStr, Theme.SpeedFont, sb, 0, 16, sf);
+            }
+            using (SolidBrush lb = new SolidBrush(Theme.Dim))
+            {
+                var sf = new StringFormat { Alignment = StringAlignment.Center };
+                g.DrawString("KM/H", Theme.BadgeFont, lb, 0, 34, sf);
+            }
+
+            // Bottom DRS & ERS Mini Badges
+            string drsStatus = _telemetry.Data.DrsActive ? "DRS OPEN" : (_telemetry.Data.DrsAllowed ? "DRS RDY" : "DRS");
+            Color drsColor = _telemetry.Data.DrsActive ? Color.FromArgb(16, 185, 129) :
+                             (_telemetry.Data.DrsAllowed ? Color.FromArgb(245, 158, 11) : Theme.Faint);
+            using (SolidBrush db = new SolidBrush(drsColor))
+            {
+                var sf = new StringFormat { Alignment = StringAlignment.Center };
+                g.DrawString(drsStatus, Theme.BadgeFont, db, 0, 46, sf);
+            }
+
+            g.Restore(state);
+        }
+
+        private void DrawWheelButton(Graphics g, Rectangle r, string text, bool pressed, Color colActive)
+        {
+            Color bg = pressed ? colActive : Color.FromArgb(16, 24, 40);
+            Color border = pressed ? Color.White : Theme.Stroke;
+            Color fg = pressed ? Color.Black : colActive;
+
+            using (GraphicsPath pth = GetRoundedRect(r, 6))
+            {
+                using (SolidBrush b = new SolidBrush(bg)) g.FillPath(b, pth);
+                using (Pen p = new Pen(border, 1.2f)) g.DrawPath(p, pth);
+            }
+
+            using (SolidBrush b = new SolidBrush(fg))
+            {
+                var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
+                g.DrawString(text, Theme.SmallB, b, new RectangleF(r.X, r.Y, r.Width, r.Height), sf);
             }
         }
 
-        private void DrawPillButton(Graphics g, Rectangle r, string text, bool pressed)
+        private void DrawRevLeds(Graphics g, int startX, int startY, int totalWidth)
         {
-            Color bg = pressed ? Theme.Accent : Theme.SurfaceHi;
-            Color border = pressed ? Theme.Ink : Theme.Stroke;
+            int ledCount = 15;
+            int ledSpacing = totalWidth / ledCount;
+            int ledR = 4;
 
-            using (GraphicsPath path = GetRoundedRect(r, 8))
+            // Compute how many LEDs are lit
+            int litCount = 0;
+            if (_telemetry.Data.Active)
             {
-                using (SolidBrush b = new SolidBrush(bg)) g.FillPath(b, path);
-                using (Pen p = new Pen(border, 1.5f)) g.DrawPath(p, path);
+                float frac = (float)_telemetry.Data.EngineRPM / Math.Max(1, _telemetry.Data.MaxRPM);
+                litCount = (int)(frac * ledCount);
             }
-            using (SolidBrush b = new SolidBrush(Theme.Ink))
+            else if (_smoothThrottle > 0.05f)
             {
-                g.DrawString(text, Theme.Small, b, r.X + 8, r.Y + 6);
+                litCount = (int)(_smoothThrottle * ledCount);
+            }
+            else
+            {
+                // Idle pulse wave
+                litCount = (int)((Math.Sin(_animTime * 3.5) + 1.0) * 7.5);
+            }
+
+            for (int i = 0; i < ledCount; i++)
+            {
+                int lx = startX + i * ledSpacing + 2;
+                Rectangle lr = new Rectangle(lx, startY, ledR, ledR);
+
+                Color onCol;
+                if (i < 5) onCol = Color.FromArgb(16, 185, 129);       // Green
+                else if (i < 10) onCol = Color.FromArgb(239, 68, 68);  // Red
+                else onCol = Color.FromArgb(59, 130, 246);             // Blue / Purple
+
+                bool isLit = (i < litCount);
+                Color drawCol = isLit ? onCol : Color.FromArgb(25, 35, 55);
+
+                using (SolidBrush b = new SolidBrush(drawCol)) g.FillEllipse(b, lr);
+                if (isLit)
+                {
+                    // Mini white specular center
+                    using (SolidBrush wb = new SolidBrush(Color.White))
+                    {
+                        g.FillEllipse(wb, lr.X + 1, lr.Y + 1, 2, 2);
+                    }
+                }
             }
         }
 
@@ -1144,7 +1361,7 @@ namespace ApexWheel
             {
                 using (SolidBrush b = new SolidBrush(Theme.Dim))
                 {
-                    g.DrawString(TitleText.ToUpperInvariant(), Theme.Small, b, 16, 12);
+                    g.DrawString(TitleText.ToUpperInvariant(), Theme.SmallB, b, 16, 12);
                 }
             }
         }
@@ -1163,7 +1380,7 @@ namespace ApexWheel
     }
 
     // =========================================================================
-    // 7. Gyropad-Style Toggle Method Button (Wi-Fi / USB)
+    // 7. Modern Toggle Method Button (Wi-Fi / USB)
     // =========================================================================
     public class MethodBtn : Control
     {
@@ -1187,7 +1404,7 @@ namespace ApexWheel
 
             Rectangle r = new Rectangle(1, 1, Width - 3, Height - 3);
             Color bg = Active ? Theme.SurfaceHi : Theme.Surface;
-            Color border = Active ? Theme.Accent : Theme.Stroke;
+            Color border = Active ? Theme.StrokeHi : Theme.Stroke;
 
             using (GraphicsPath path = GetRoundedRect(r, 10))
             {
@@ -1197,11 +1414,11 @@ namespace ApexWheel
 
             using (SolidBrush b = new SolidBrush(Active ? Theme.Ink : Theme.Dim))
             {
-                g.DrawString(Title, Theme.BodyB, b, 14, 12);
+                g.DrawString(Title, Theme.BodyB, b, 14, 10);
             }
-            using (SolidBrush b = new SolidBrush(Theme.Faint))
+            using (SolidBrush b = new SolidBrush(Active ? Theme.Accent : Theme.Faint))
             {
-                g.DrawString(Subtitle, Theme.Small, b, 14, 30);
+                g.DrawString(Subtitle, Theme.Small, b, 14, 28);
             }
         }
 
@@ -1237,6 +1454,7 @@ namespace ApexWheel
 
         private Label _lblIp;
         private Label _lblStatus;
+        private Label _lblVigem;
         private Label _lblTelemDetail;
         private MethodBtn _btnWifi;
         private MethodBtn _btnUsb;
@@ -1264,31 +1482,31 @@ namespace ApexWheel
 
         private void InitializeUI()
         {
-            Text = "ApexWheel F1 - Companion Server";
-            Size = new Size(820, 680);
-            MinimumSize = new Size(760, 620);
+            Text = "ApexWheel F1 • Ultimate Cockpit Dashboard v1.1.0";
+            Size = new Size(960, 680);
+            MinimumSize = new Size(880, 620);
             StartPosition = FormStartPosition.CenterScreen;
             BackColor = Theme.Bg;
             ForeColor = Theme.Ink;
             Font = Theme.Body;
 
             // Header Banner
-            Panel header = new Panel { Dock = DockStyle.Top, Height = 64, BackColor = Theme.Surface, Padding = new Padding(20, 16, 20, 16) };
+            Panel header = new Panel { Dock = DockStyle.Top, Height = 64, BackColor = Theme.Surface, Padding = new Padding(20, 14, 20, 14) };
             Label title = new Label
             {
                 Text = "🏎️ APEXWHEEL F1",
                 Font = Theme.H1,
                 ForeColor = Theme.Ink,
                 AutoSize = true,
-                Location = new Point(20, 16)
+                Location = new Point(20, 14)
             };
             Label version = new Label
             {
-                Text = "v1.37 F1 EDITION (ViGEm Xbox 360 + F1 25 UDP Telemetry)",
-                Font = Theme.Small,
+                Text = "v1.1.0 PC COMPANION • HIGH-PERFORMANCE 60Hz XBOX 360 & F1 25 UDP TELEMETRY",
+                Font = Theme.SmallB,
                 ForeColor = Theme.Dim,
                 AutoSize = true,
-                Location = new Point(240, 22)
+                Location = new Point(220, 20)
             };
             header.Controls.Add(title);
             header.Controls.Add(version);
@@ -1300,78 +1518,94 @@ namespace ApexWheel
                 Dock = DockStyle.Fill,
                 ColumnCount = 2,
                 RowCount = 2,
-                Padding = new Padding(16),
+                Padding = new Padding(14),
                 BackColor = Theme.Bg
             };
-            mainLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 45f));
-            mainLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 55f));
-            mainLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 55f));
-            mainLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 45f));
+            mainLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 330f));
+            mainLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+            mainLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 50f));
+            mainLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 50f));
 
             // Card 1: Connection & Methods
-            _connCard = new Card("CONNECTION") { Dock = DockStyle.Fill };
-            _btnWifi = new MethodBtn("WI-FI LOCAL", GetLocalIp() + ":8080", true) { Location = new Point(16, 38), Size = new Size(140, 56) };
-            _btnUsb = new MethodBtn("USB CABLE", "ADB 0ms Jitter", false) { Location = new Point(166, 38), Size = new Size(140, 56) };
+            _connCard = new Card("CONNECTION & CONTROLLER") { Dock = DockStyle.Fill };
+            _btnWifi = new MethodBtn("WI-FI LOCAL", GetLocalIp() + ":5005", true) { Location = new Point(14, 38), Size = new Size(142, 54) };
+            _btnUsb = new MethodBtn("USB CABLE", "ADB 0ms Jitter", false) { Location = new Point(162, 38), Size = new Size(142, 54) };
 
             _btnWifi.Click += (s, e) => { _btnWifi.Active = true; _btnUsb.Active = false; _btnWifi.Invalidate(); _btnUsb.Invalidate(); };
             _btnUsb.Click += (s, e) => { _btnWifi.Active = false; _btnUsb.Active = true; CheckUsbForward(); _btnWifi.Invalidate(); _btnUsb.Invalidate(); };
 
             _lblIp = new Label
             {
-                Text = "Phone URL: http://" + GetLocalIp() + ":8080",
+                Text = "LAN IP: " + GetLocalIp() + " (Ports 5005, 5006, 5007)",
                 ForeColor = Theme.Accent,
-                Font = Theme.BodyB,
-                Location = new Point(16, 108),
+                Font = Theme.SmallB,
+                Location = new Point(14, 102),
+                AutoSize = true
+            };
+            _lblVigem = new Label
+            {
+                Text = "● ViGEmBus: Xbox 360 Controller Active",
+                ForeColor = Theme.Good,
+                Font = Theme.SmallB,
+                Location = new Point(14, 126),
                 AutoSize = true
             };
             _lblStatus = new Label
             {
-                Text = "Status: Waiting for phone connection on port 8081...",
+                Text = "Waiting for phone connection...",
                 ForeColor = Theme.Dim,
                 Font = Theme.Small,
-                Location = new Point(16, 134),
+                Location = new Point(14, 150),
                 AutoSize = true
             };
 
             _connCard.Controls.Add(_btnWifi);
             _connCard.Controls.Add(_btnUsb);
             _connCard.Controls.Add(_lblIp);
+            _connCard.Controls.Add(_lblVigem);
             _connCard.Controls.Add(_lblStatus);
             mainLayout.Controls.Add(_connCard, 0, 0);
 
-            // Card 2: Interactive F1 Pad Diagram (Right Column)
+            // Card 2: Interactive F1 Pad Diagram (Right Column spanning both rows)
             _diagram = new PadDiagram(_input, _telemetry) { Dock = DockStyle.Fill };
             mainLayout.Controls.Add(_diagram, 1, 0);
             mainLayout.SetRowSpan(_diagram, 2);
 
             // Card 3: F1 25 UDP Telemetry Status
-            _telemCard = new Card("F1 25 TELEMETRY ENGINE (PORT 20777)") { Dock = DockStyle.Fill };
+            _telemCard = new Card("F1 25 LIVE TELEMETRY (PORT 20777)") { Dock = DockStyle.Fill };
             _lblTelemDetail = new Label
             {
-                Text = "F1 25: Waiting for car on track...\n\nEnable in F1 25: Settings -> Telemetry -> UDP On (Port 20777)",
+                Text = @"F1 25: Waiting for car on track...
+
+Enable in F1 25: Settings -> Telemetry -> UDP On (Port 20777)",
                 ForeColor = Theme.Dim,
                 Font = Theme.Small,
-                Location = new Point(16, 36),
-                Size = new Size(290, 70)
+                Location = new Point(14, 38),
+                Size = new Size(295, 120)
             };
             _telemCard.Controls.Add(_lblTelemDetail);
             mainLayout.Controls.Add(_telemCard, 0, 1);
 
             Controls.Add(mainLayout);
 
-            // Timer for UI refresh
-            _tickTimer = new System.Windows.Forms.Timer { Interval = 33 }; // 30fps
+            // 60 FPS Buttery-Smooth Timer
+            _tickTimer = new System.Windows.Forms.Timer { Interval = 16 };
             _tickTimer.Tick += (s, e) =>
             {
-                _diagram.Invalidate();
+                _diagram.UpdateFrame(0.016f);
 
                 if (_telemetry.Data.Active)
                 {
                     _lblTelemDetail.Text = string.Format(
-                        "F1 25: ACTIVE\nGear: {0} | Speed: {1} KM/H | RPM: {2}\nDRS: {3} | ERS: {4:0}% | Brake Bias: {5}%",
+                        @"F1 25 TELEMETRY: ACTIVE
+Gear: {0} | Speed: {1} KM/H
+Engine RPM: {2:N0} / {3:N0}
+DRS: {4} | ERS: {5:0}%
+Brake Bias: {6}% Front",
                         _telemetry.Data.Gear == -1 ? "R" : (_telemetry.Data.Gear == 0 ? "N" : _telemetry.Data.Gear.ToString()),
                         _telemetry.Data.SpeedKmh,
                         _telemetry.Data.EngineRPM,
+                        _telemetry.Data.MaxRPM,
                         _telemetry.Data.DrsActive ? "OPEN" : (_telemetry.Data.DrsAllowed ? "READY" : "OFF"),
                         _telemetry.Data.ErsPercent,
                         _telemetry.Data.BrakeBias
@@ -1381,7 +1615,8 @@ namespace ApexWheel
 
                 if (_input.PacketsReceived > 0)
                 {
-                    _lblStatus.Text = string.Format("Phone: Connected ({0} inputs) | ViGEm: Active", _input.PacketsReceived);
+                    _lblStatus.Text = string.Format(@"Phone: 60Hz Stream ({0} inputs)
+ASUS PC Broadcast: Active", _input.PacketsReceived);
                     _lblStatus.ForeColor = Theme.Good;
                 }
             };
