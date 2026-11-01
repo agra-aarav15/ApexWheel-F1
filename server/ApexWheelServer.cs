@@ -18,19 +18,19 @@ namespace ApexWheel
     // =========================================================================
     public static class Theme
     {
-        public static readonly Color Bg          = Color.FromArgb(11, 9, 16);          // Pitch dark
-        public static readonly Color Surface     = Color.FromArgb(26, 22, 40);         // #1A1628 Dark purple
-        public static readonly Color SurfaceHi   = Color.FromArgb(36, 30, 56);         // #241E38 Highlight
-        public static readonly Color Stroke      = Color.FromArgb(50, 40, 75);         // Border
-        public static readonly Color Ink         = Color.FromArgb(245, 240, 255);      // Pure white/ink
-        public static readonly Color Dim         = Color.FromArgb(170, 160, 190);      // Dim gray
-        public static readonly Color Faint       = Color.FromArgb(110, 100, 130);      // Faint
-        public static readonly Color Accent      = Color.FromArgb(168, 85, 247);       // #A855F7 Vibrant Purple
-        public static readonly Color AccentDeep  = Color.FromArgb(124, 58, 237);       // #7C3AED
-        public static readonly Color Throttle    = Color.FromArgb(168, 85, 247);       // Purple Gas
-        public static readonly Color Brake       = Color.FromArgb(255, 61, 110);       // #FF3D6E Neon Pink/Red Brake
-        public static readonly Color Good        = Color.FromArgb(0, 230, 118);        // Green
-        public static readonly Color Warn        = Color.FromArgb(255, 214, 0);        // Yellow
+        public static readonly Color Bg          = Color.FromArgb(4, 8, 16);           // Literally darkest navy
+        public static readonly Color Surface     = Color.FromArgb(8, 16, 32);          // Deep navy surface
+        public static readonly Color SurfaceHi   = Color.FromArgb(14, 26, 50);         // Navy highlight
+        public static readonly Color Stroke      = Color.FromArgb(24, 42, 80);         // Navy border
+        public static readonly Color Ink         = Color.FromArgb(240, 246, 255);      // Ice white text
+        public static readonly Color Dim         = Color.FromArgb(148, 163, 184);      // Slate text
+        public static readonly Color Faint       = Color.FromArgb(71, 85, 105);        // Muted navy slate
+        public static readonly Color Accent      = Color.FromArgb(37, 99, 235);        // #2563EB Racing Navy Blue
+        public static readonly Color AccentDeep  = Color.FromArgb(29, 78, 216);        // #1D4ED8 Deep Navy Blue
+        public static readonly Color Throttle    = Color.FromArgb(37, 99, 235);        // Racing Navy Blue Gas
+        public static readonly Color Brake       = Color.FromArgb(239, 68, 68);        // #EF4444 Racing Red Brake
+        public static readonly Color Good        = Color.FromArgb(16, 185, 129);       // Emerald Green
+        public static readonly Color Warn        = Color.FromArgb(245, 158, 11);       // Amber
         public static readonly Color F1Red       = Color.FromArgb(225, 6, 0);          // F1 Red
 
         public static readonly Font H1      = new Font("Segoe UI", 16f, FontStyle.Bold);
@@ -591,6 +591,31 @@ namespace ApexWheel
             }
         }
 
+        public static ushort MapPhoneButtonsToXbox(ushort phoneMask)
+        {
+            ushort x = 0;
+            // Paddle Shifters
+            if ((phoneMask & (1 << 0)) != 0) x |= ViGEmBridge.LEFT_SHOULDER;  // Left paddle: Gear Down (LB)
+            if ((phoneMask & (1 << 1)) != 0) x |= ViGEmBridge.RIGHT_SHOULDER; // Right paddle: Gear Up (RB)
+            // Quick Buttons
+            if ((phoneMask & (1 << 2)) != 0) x |= ViGEmBridge.START;          // IGN: Start
+            if ((phoneMask & (1 << 3)) != 0) x |= ViGEmBridge.LEFT_THUMB;     // LIGHTS: Left Thumb
+            if ((phoneMask & (1 << 4)) != 0) x |= ViGEmBridge.RIGHT_THUMB;    // HORN: Right Thumb
+            if ((phoneMask & (1 << 5)) != 0) x |= ViGEmBridge.GUIDE;          // CAM: Guide
+            if ((phoneMask & (1 << 7)) != 0) x |= ViGEmBridge.BACK;           // MAP: Back
+            // D-Pad
+            if ((phoneMask & (1 << 8)) != 0)  x |= ViGEmBridge.DPAD_UP;
+            if ((phoneMask & (1 << 9)) != 0)  x |= ViGEmBridge.DPAD_LEFT;
+            if ((phoneMask & (1 << 10)) != 0) x |= ViGEmBridge.DPAD_DOWN;
+            if ((phoneMask & (1 << 11)) != 0) x |= ViGEmBridge.DPAD_RIGHT;
+            // Face Buttons
+            if ((phoneMask & (1 << 12)) != 0) x |= ViGEmBridge.Y;
+            if ((phoneMask & (1 << 13)) != 0) x |= ViGEmBridge.X;
+            if ((phoneMask & (1 << 14)) != 0) x |= ViGEmBridge.A;
+            if ((phoneMask & (1 << 15)) != 0) x |= ViGEmBridge.B;
+            return x;
+        }
+
         public void ProcessRawBytes(byte[] bytes)
         {
             if (bytes == null || bytes.Length == 0) return;
@@ -615,13 +640,14 @@ namespace ApexWheel
                 double rawClutch = Math.Max(0.0, Math.Min(1.0, uClutch / 65535.0));
 
                 // Bytes 14-15: Buttons bitmask (ushort)
-                ushort btnMask = BitConverter.ToUInt16(bytes, 14);
+                ushort rawBtnMask = BitConverter.ToUInt16(bytes, 14);
+                ushort mappedButtons = MapPhoneButtonsToXbox(rawBtnMask);
 
                 Steer = rawSteer;
                 Throttle = rawGas;
                 Brake = rawBrake;
                 Clutch = rawClutch;
-                Buttons = btnMask;
+                Buttons = mappedButtons;
                 PacketsReceived++;
                 LastInputTime = DateTime.UtcNow;
 
@@ -856,6 +882,22 @@ namespace ApexWheel
             using (SolidBrush b = new SolidBrush(Theme.Ink))
             {
                 g.DrawString(label, Theme.BodyB, b, r.X + 10, r.Bottom - 26);
+            }
+        }
+
+                private void DrawCircleButton(Graphics g, Rectangle r, string label, bool pressed, Color activeCol)
+        {
+            Color bg = pressed ? activeCol : Theme.SurfaceHi;
+            Color fg = pressed ? Color.Black : Theme.Ink;
+            Color border = pressed ? activeCol : Theme.Stroke;
+
+            using (SolidBrush b = new SolidBrush(bg)) g.FillEllipse(b, r);
+            using (Pen p = new Pen(border, pressed ? 2f : 1f)) g.DrawEllipse(p, r);
+
+            using (SolidBrush tb = new SolidBrush(fg))
+            {
+                var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
+                g.DrawString(label, Theme.BodyB, tb, new RectangleF(r.X, r.Y, r.Width, r.Height), sf);
             }
         }
 

@@ -25,7 +25,7 @@ namespace ApexWheelSetup
             this.FormBorderStyle = FormBorderStyle.FixedDialog;
             this.MaximizeBox = false;
             this.StartPosition = FormStartPosition.CenterScreen;
-            this.BackColor = Color.FromArgb(18, 14, 28);
+            this.BackColor = Color.FromArgb(4, 8, 16);
             this.ForeColor = Color.FromArgb(245, 240, 255);
             this.Font = new Font("Segoe UI", 9.5f, FontStyle.Regular);
 
@@ -33,10 +33,10 @@ namespace ApexWheelSetup
             Panel banner = new Panel();
             banner.Dock = DockStyle.Top;
             banner.Height = 80;
-            banner.BackColor = Color.FromArgb(26, 20, 42);
+            banner.BackColor = Color.FromArgb(8, 16, 32);
             banner.Paint += (s, e) =>
             {
-                using (var pen = new Pen(Color.FromArgb(50, 38, 78), 1))
+                using (var pen = new Pen(Color.FromArgb(20, 38, 72), 1))
                 {
                     e.Graphics.DrawLine(pen, 0, banner.Height - 1, banner.Width, banner.Height - 1);
                 }
@@ -46,7 +46,7 @@ namespace ApexWheelSetup
             Label lblTitle = new Label();
             lblTitle.Text = "🏎️ ApexWheel F1";
             lblTitle.Font = new Font("Segoe UI", 16f, FontStyle.Bold);
-            lblTitle.ForeColor = Color.FromArgb(168, 85, 247);
+            lblTitle.ForeColor = Color.FromArgb(37, 99, 235);
             lblTitle.Location = new Point(24, 14);
             lblTitle.AutoSize = true;
             banner.Controls.Add(lblTitle);
@@ -54,7 +54,7 @@ namespace ApexWheelSetup
             Label lblSub = new Label();
             lblSub.Text = "Phone Steering Wheel & EA Sports F1 25 UDP Telemetry Companion";
             lblSub.Font = new Font("Segoe UI", 9.0f, FontStyle.Regular);
-            lblSub.ForeColor = Color.FromArgb(170, 160, 190);
+            lblSub.ForeColor = Color.FromArgb(148, 163, 184);
             lblSub.Location = new Point(26, 48);
             lblSub.AutoSize = true;
             banner.Controls.Add(lblSub);
@@ -76,7 +76,7 @@ namespace ApexWheelSetup
             _txtPath.Text = defaultPath;
             _txtPath.Location = new Point(26, 122);
             _txtPath.Size = new Size(420, 26);
-            _txtPath.BackColor = Color.FromArgb(32, 25, 52);
+            _txtPath.BackColor = Color.FromArgb(10, 20, 40);
             _txtPath.ForeColor = Color.White;
             _txtPath.BorderStyle = BorderStyle.FixedSingle;
             this.Controls.Add(_txtPath);
@@ -86,8 +86,8 @@ namespace ApexWheelSetup
             btnBrowse.Location = new Point(454, 120);
             btnBrowse.Size = new Size(88, 28);
             btnBrowse.FlatStyle = FlatStyle.Flat;
-            btnBrowse.FlatAppearance.BorderColor = Color.FromArgb(80, 60, 120);
-            btnBrowse.BackColor = Color.FromArgb(36, 28, 58);
+            btnBrowse.FlatAppearance.BorderColor = Color.FromArgb(30, 58, 110);
+            btnBrowse.BackColor = Color.FromArgb(14, 26, 50);
             btnBrowse.Click += (s, e) =>
             {
                 using (var fbd = new FolderBrowserDialog())
@@ -130,7 +130,7 @@ namespace ApexWheelSetup
 
             _lblStatus = new Label();
             _lblStatus.Text = "Ready to install.";
-            _lblStatus.ForeColor = Color.FromArgb(170, 160, 190);
+            _lblStatus.ForeColor = Color.FromArgb(148, 163, 184);
             _lblStatus.Location = new Point(26, 288);
             _lblStatus.Size = new Size(516, 22);
             this.Controls.Add(_lblStatus);
@@ -139,7 +139,7 @@ namespace ApexWheelSetup
             Panel footer = new Panel();
             footer.Dock = DockStyle.Bottom;
             footer.Height = 60;
-            footer.BackColor = Color.FromArgb(24, 18, 38);
+            footer.BackColor = Color.FromArgb(6, 12, 24);
             this.Controls.Add(footer);
 
             Button btnCancel = new Button();
@@ -147,7 +147,7 @@ namespace ApexWheelSetup
             btnCancel.Location = new Point(454, 16);
             btnCancel.Size = new Size(88, 30);
             btnCancel.FlatStyle = FlatStyle.Flat;
-            btnCancel.FlatAppearance.BorderColor = Color.FromArgb(70, 55, 105);
+            btnCancel.FlatAppearance.BorderColor = Color.FromArgb(28, 50, 95);
             btnCancel.Click += (s, e) => this.Close();
             footer.Controls.Add(btnCancel);
 
@@ -156,7 +156,7 @@ namespace ApexWheelSetup
             _btnInstall.Location = new Point(356, 16);
             _btnInstall.Size = new Size(90, 30);
             _btnInstall.FlatStyle = FlatStyle.Flat;
-            _btnInstall.BackColor = Color.FromArgb(168, 85, 247);
+            _btnInstall.BackColor = Color.FromArgb(37, 99, 235);
             _btnInstall.ForeColor = Color.White;
             _btnInstall.FlatAppearance.BorderSize = 0;
             _btnInstall.Click += BtnInstall_Click;

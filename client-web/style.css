@@ -1,16 +1,16 @@
 :root {
-    --bg: #0b0910;
-    --surface: #141218;
-    --surface-hi: #1d1b24;
-    --stroke: #2e2a38;
+    --bg: #040810;
+    --surface: #060B14;
+    --surface-hi: #080E1C;
+    --stroke: #14264A;
     --ink: #f0ecf4;
     --dim: #a49cb0;
     --faint: #6c6478;
-    --accent: #a855f7;
-    --accent-deep: #7c3aed;
+    --accent: #2563EB;
+    --accent-deep: #1D4ED8;
     --brake: #ff3d6e;
-    --throttle: #a855f7;
-    --clutch: #c084fc;
+    --throttle: #2563EB;
+    --clutch: #60A5FA;
     --warn: #ffd600;
     --good: #00e676;
     --f1-red: #e10600;
@@ -305,7 +305,7 @@ body {
     width: 12px;
     height: 12px;
     border-radius: 50%;
-    background: #221e2c;
+    background: #0B1324;
     transition: background 0.05s, box-shadow 0.05s;
 }
 
