@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
+using System.Net.NetworkInformation;
 using System.Text;
 using System.Threading;
 using System.Drawing;
@@ -430,10 +431,12 @@ namespace ApexWheel
         private UdpClient _udp8081;
         private UdpClient _udp5005;
         private UdpClient _udpDiscovery;
+        private Socket _udpDiscoveryListener;
         private TcpListener _tcpPairServer;
         private Thread _thread8081;
         private Thread _thread5005;
         private Thread _threadDiscovery;
+        private Thread _threadDiscoveryListen;
         private Thread _threadPair;
         private bool _running;
         private readonly ViGEmBridge _bridge;
@@ -483,7 +486,7 @@ namespace ApexWheel
             }
             catch { }
 
-            // 3. Gyropad Discovery UDP port 5006
+            // 3. Gyropad Discovery UDP port 5006 broadcast sender
             try
             {
                 _udpDiscovery = new UdpClient();
@@ -491,6 +494,20 @@ namespace ApexWheel
                 _threadDiscovery = new Thread(DiscoveryBroadcastLoop);
                 _threadDiscovery.IsBackground = true;
                 _threadDiscovery.Start();
+            }
+            catch { }
+
+            // 3b. Dedicated UDP port 5006 listener for instant response to "Search again"
+            try
+            {
+                _udpDiscoveryListener = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+                _udpDiscoveryListener.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+                _udpDiscoveryListener.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.Broadcast, true);
+                _udpDiscoveryListener.Bind(new IPEndPoint(IPAddress.Any, 5006));
+
+                _threadDiscoveryListen = new Thread(DiscoveryListenLoop);
+                _threadDiscoveryListen.IsBackground = true;
+                _threadDiscoveryListen.Start();
             }
             catch { }
 
@@ -512,6 +529,7 @@ namespace ApexWheel
             if (_udp5005 != null) { try { _udp5005.Close(); } catch { } _udp5005 = null; }
             if (_udp8081 != null) { try { _udp8081.Close(); } catch { } _udp8081 = null; }
             if (_udpDiscovery != null) { try { _udpDiscovery.Close(); } catch { } _udpDiscovery = null; }
+            if (_udpDiscoveryListener != null) { try { _udpDiscoveryListener.Close(); } catch { } _udpDiscoveryListener = null; }
             if (_tcpPairServer != null) { try { _tcpPairServer.Stop(); } catch { } _tcpPairServer = null; }
         }
 
@@ -549,18 +567,110 @@ namespace ApexWheel
             }
         }
 
+        private static List<IPAddress> GetBroadcastAddresses()
+        {
+            var list = new List<IPAddress>();
+            try
+            {
+                foreach (var ni in NetworkInterface.GetAllNetworkInterfaces())
+                {
+                    if (ni.OperationalStatus != OperationalStatus.Up) continue;
+                    if (ni.NetworkInterfaceType == NetworkInterfaceType.Loopback) continue;
+
+                    var ipProps = ni.GetIPProperties();
+                    foreach (var u in ipProps.UnicastAddresses)
+                    {
+                        if (u.Address.AddressFamily == AddressFamily.InterNetwork && u.IPv4Mask != null)
+                        {
+                            byte[] ipBytes = u.Address.GetAddressBytes();
+                            byte[] maskBytes = u.IPv4Mask.GetAddressBytes();
+                            if (ipBytes.Length == 4 && maskBytes.Length == 4)
+                            {
+                                byte[] bcastBytes = new byte[4];
+                                for (int i = 0; i < 4; i++)
+                                {
+                                    bcastBytes[i] = (byte)(ipBytes[i] | (~maskBytes[i] & 0xFF));
+                                }
+                                var bcast = new IPAddress(bcastBytes);
+                                if (!list.Contains(bcast))
+                                {
+                                    list.Add(bcast);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch { }
+
+            if (!list.Contains(IPAddress.Broadcast))
+            {
+                list.Add(IPAddress.Broadcast);
+            }
+            return list;
+        }
+
         private void DiscoveryBroadcastLoop()
         {
-            IPEndPoint target = new IPEndPoint(IPAddress.Broadcast, 5006);
-            byte[] announce = Encoding.ASCII.GetBytes("PW2 ANNOUNCE PC ApexWheel 5007\n");
+            string pcName = Environment.MachineName.Replace(" ", "_");
+            if (string.IsNullOrEmpty(pcName)) pcName = "ApexWheel";
+            byte[] announce = Encoding.ASCII.GetBytes("PW2 ANNOUNCE PC " + pcName + " 5007\n");
+
             while (_running && _udpDiscovery != null)
             {
                 try
                 {
-                    _udpDiscovery.Send(announce, announce.Length, target);
+                    var targets = GetBroadcastAddresses();
+                    foreach (var addr in targets)
+                    {
+                        try
+                        {
+                            _udpDiscovery.Send(announce, announce.Length, new IPEndPoint(addr, 5006));
+                        }
+                        catch { }
+                    }
                 }
                 catch { }
-                Thread.Sleep(1500);
+                Thread.Sleep(800);
+            }
+        }
+
+        private void DiscoveryListenLoop()
+        {
+            byte[] buf = new byte[1024];
+            EndPoint remoteEP = new IPEndPoint(IPAddress.Any, 0);
+            string pcName = Environment.MachineName.Replace(" ", "_");
+            if (string.IsNullOrEmpty(pcName)) pcName = "ApexWheel";
+            byte[] announceBytes = Encoding.ASCII.GetBytes("PW2 ANNOUNCE PC " + pcName + " 5007\n");
+            byte[] pairAckBytes = Encoding.ASCII.GetBytes("PW2 PAIRACK " + pcName + " 5007\n");
+
+            while (_running && _udpDiscoveryListener != null)
+            {
+                try
+                {
+                    int received = _udpDiscoveryListener.ReceiveFrom(buf, ref remoteEP);
+                    if (received > 0)
+                    {
+                        string msg = Encoding.ASCII.GetString(buf, 0, received).Trim();
+                        // If phone announces or searches for PC:
+                        if (msg.StartsWith("PW2 ANNOUNCE PHONE", StringComparison.OrdinalIgnoreCase) ||
+                            msg.StartsWith("PW2 DISCOVER", StringComparison.OrdinalIgnoreCase))
+                        {
+                            _udpDiscoveryListener.SendTo(announceBytes, remoteEP);
+                            var ip = ((IPEndPoint)remoteEP).Address;
+                            _udpDiscoveryListener.SendTo(announceBytes, new IPEndPoint(ip, 5006));
+                        }
+                        else if (msg.StartsWith("PW2 PAIRME", StringComparison.OrdinalIgnoreCase))
+                        {
+                            _udpDiscoveryListener.SendTo(pairAckBytes, remoteEP);
+                            var ip = ((IPEndPoint)remoteEP).Address;
+                            _udpDiscoveryListener.SendTo(pairAckBytes, new IPEndPoint(ip, 5006));
+                            _udpDiscoveryListener.SendTo(announceBytes, new IPEndPoint(ip, 5006));
+                        }
+                    }
+                }
+                catch (SocketException) { }
+                catch (Exception) { }
             }
         }
 
@@ -575,12 +685,14 @@ namespace ApexWheel
                     {
                         try
                         {
+                            client.NoDelay = true;
                             using (var stream = client.GetStream())
                             {
                                 byte[] buf = new byte[256];
                                 int read = stream.Read(buf, 0, buf.Length);
                                 byte[] ok = Encoding.ASCII.GetBytes("OK\n");
                                 stream.Write(ok, 0, ok.Length);
+                                stream.Flush();
                             }
                         }
                         catch { }
@@ -1043,6 +1155,10 @@ namespace ApexWheel
         private readonly F1TelemetryListener _telemetry;
         private readonly PhoneInputReceiver _input;
 
+        public ViGEmBridge ViGEm { get { return _vigem; } }
+        public F1TelemetryListener Telemetry { get { return _telemetry; } }
+        public PhoneInputReceiver Input { get { return _input; } }
+
         private PadDiagram _diagram;
         private Card _connCard;
         private Card _telemCard;
@@ -1398,28 +1514,37 @@ namespace ApexWheel
         [STAThread]
         static void Main(string[] args)
         {
-            Application.EnableVisualStyles();
-            Application.SetCompatibleTextRenderingDefault(false);
+            AppDomain.CurrentDomain.UnhandledException += (s, e) =>
+            {
+                try { File.WriteAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "unhandled_domain.log"), e.ExceptionObject.ToString()); } catch { }
+            };
+            Application.ThreadException += (s, e) =>
+            {
+                try { File.WriteAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "thread_exception.log"), e.Exception.ToString()); } catch { }
+            };
+            Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
 
-            string exeDir = AppDomain.CurrentDomain.BaseDirectory;
-            string rootDir = Path.GetFullPath(Path.Combine(exeDir, ".."));
-            string webRoot = Path.Combine(rootDir, "client-web");
-            if (!Directory.Exists(webRoot)) webRoot = exeDir;
+            try
+            {
+                Application.EnableVisualStyles();
+                Application.SetCompatibleTextRenderingDefault(false);
 
-            MainForm form = new MainForm();
+                string exeDir = AppDomain.CurrentDomain.BaseDirectory;
+                string rootDir = Path.GetFullPath(Path.Combine(exeDir, ".."));
+                string webRoot = Path.Combine(rootDir, "client-web");
+                if (!Directory.Exists(webRoot)) webRoot = exeDir;
 
-            // Also start HTTP server for mobile phone pairing
-            ViGEmBridge bridge = new ViGEmBridge();
-            bridge.Open();
-            F1TelemetryListener telemetry = new F1TelemetryListener();
-            telemetry.Start(20777);
-            PhoneInputReceiver input = new PhoneInputReceiver(bridge);
-            input.Start(8081);
+                MainForm form = new MainForm();
 
-            HttpServer http = new HttpServer(telemetry, input, bridge, webRoot);
-            http.Start(8080);
+                HttpServer http = new HttpServer(form.Telemetry, form.Input, form.ViGEm, webRoot);
+                http.Start(8080);
 
-            Application.Run(form);
+                Application.Run(form);
+            }
+            catch (Exception ex)
+            {
+                File.WriteAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "server_crash.log"), ex.ToString());
+            }
         }
     }
 }
