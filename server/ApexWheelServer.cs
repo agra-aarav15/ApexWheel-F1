@@ -690,7 +690,7 @@ namespace ApexWheel
                             {
                                 byte[] buf = new byte[256];
                                 int read = stream.Read(buf, 0, buf.Length);
-                                byte[] ok = Encoding.ASCII.GetBytes("OK\n");
+                                byte[] ok = Encoding.ASCII.GetBytes("OK 123456\n");
                                 stream.Write(ok, 0, ok.Length);
                                 stream.Flush();
                             }
