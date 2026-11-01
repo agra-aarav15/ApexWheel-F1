@@ -1,142 +1,63 @@
 # 🏎️ ApexWheel F1
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Android-green.svg)](#)
-[![Telemetry](https://img.shields.io/badge/Telemetry-F1%2025%20%2F%20F1%2024-red.svg)](#)
-[![Driver](https://img.shields.io/badge/Virtual%20Controller-ViGEmBus%20(Xbox%20360)-purple.svg)](#)
+[![Latest Release](https://img.shields.io/github/v/release/agra-aarav15/ApexWheel-F1?color=blue&label=Latest%20Release)](https://github.com/agra-aarav15/ApexWheel-F1/releases)
+[![Platform](https://img.shields.io/badge/Platform-Android%20%7C%20Windows%20PC-0b1324.svg)](#)
 
-> **Turn your smartphone into an authentic Formula 1 Steering Wheel & Universal Sim Racing Controller for PC.**
+> **"Built by a racing fan, from the heart — turn your smartphone into an authentic F1 steering wheel and feel every corner."**
 
-ApexWheel is a high-performance, ultra-low latency system that turns any Android smartphone into a full-featured Formula 1 steering wheel and gamepad. It bridges live **EA Sports F1 25 / F1 24 UDP Telemetry** with your phone's screen and gyroscope, giving you an authentic cockpit experience with shift lights, gear display, DRS/ERS controls, and paddle shifters.
-
----
-
-## 🌟 Key Features
-
-- **🏎️ Authentic Formula 1 Wheel Cockpit**:
-  - **15 Shift LEDs**: 5 Green $\rightarrow$ 5 Red $\rightarrow$ 5 Blue flashing shift points.
-  - **Large Gear Readout**: Real-time gear display (`N`, `R`, `1` through `8`).
-  - **Digital Speedometer**: Speed in KM/H.
-  - **DRS Status Indicator**: Visual notification when DRS is available and active.
-  - **ERS Battery Gauge**: Live battery storage percentage and deployment modes.
-  - **4-Corner Tyre Temperatures**: Real-time thermal monitoring for Front-Left, Front-Right, Rear-Left, and Rear-Right tires.
-  - **Tactile Paddle Shifters**: Downshift (`LB`) and Upshift (`RB`) with haptic vibration feedback.
-  - **F1 Controls**: DRS button, ERS / Overtake boost, Pit Limiter, Brake Bias (+/-), and Differential adjustments.
-
-- **🎮 Universal Game Compatibility**:
-  - Emulates an **Xbox 360 Controller** via the open-source **ViGEmBus** driver.
-  - Works out of the box with **100% of PC games**:
-    - *EA Sports F1 25 / F1 24 / F1 23 / F1 22*
-    - *Assetto Corsa / Assetto Corsa Competizione*
-    - *Forza Horizon 5 / Forza Motorsport*
-    - *BeamNG.drive*
-    - *EA Sports WRC / Dirt Rally 2.0*
-    - *Need for Speed / GTA V / Rocket League / Any PC Game*
-
-- **⚡ Dual Connection (Wi-Fi + USB)**:
-  - **Wi-Fi Mode**: Wireless freedom over local Wi-Fi with auto-discovery.
-  - **USB Mode**: Connect phone with USB cable via ADB reverse port forwarding for **0ms latency**.
-
-- **📱 Multiple Presets**:
-  1. **F1 Steering Wheel Mode**: Live telemetry LCD + shift lights + F1 buttons + paddle shifters.
-  2. **GT / Sim Racing Mode**: Clean racing wheel with large progressive pedals and sequential shifter.
-  3. **Universal Gamepad Mode**: Dual analog sticks, D-pad, ABXY face buttons, and triggers.
+ApexWheel F1 turns your Android phone into a real Formula 1 steering wheel for your PC. No expensive sim rigs or bulky plastic wheels needed. Just hold your phone in your hands, tilt to steer, and hit the track!
 
 ---
 
-## 🏗️ System Architecture
+## 💙 What It Feels Like (The UI Experience)
 
-```mermaid
-flowchart LR
-    subgraph Mobile ["📱 Mobile Device"]
-        Sensors["Gyroscope & Orientation (100Hz)"]
-        Touch["Tactile Pedals & Shifters"]
-        LCD["F1 Telemetry HUD & Shift LEDs"]
-        Haptics["Vibration Engine"]
-    end
+Everything in ApexWheel is designed to give you that authentic cockpit feeling, wrapped in a sleek **pitch navy dark blue** theme:
 
-    subgraph Network ["⚡ Transport Layer"]
-        WiFi["Wi-Fi UDP & WebSockets"]
-        USB["USB Cable (ADB Reverse 0ms)"]
-    end
-
-    subgraph Server ["💻 PC Companion Server"]
-        Companion["ApexWheelServer.exe"]
-        ViGEm["ViGEmBus Virtual Gamepad"]
-        Telem["F1 Telemetry Listener (Port 20777)"]
-    end
-
-    subgraph Game ["🎮 PC Games"]
-        F1Game["F1 25 / F1 24"]
-        OtherGames["Forza / Assetto Corsa / Any Game"]
-    end
-
-    Sensors -->|UDP 8081| Network
-    Touch -->|UDP 8081| Network
-    Network --> Companion
-    Companion -->|Direct IOCTL| ViGEm
-    ViGEm -->|XInput| F1Game
-    ViGEm -->|XInput| OtherGames
-
-    F1Game -.->|UDP Telemetry 20777| Telem
-    Telem --> Companion
-    Companion -.->|Live HUD Data| Network
-    Network -.-> LCD
-    Network -.-> Haptics
-```
+* 🧭 **Instant Recenter (`📍 Location Pin` Button)**:
+  Tuck into your racing position on your chair or couch, tap the **Recenter** location pin button on the top bar, and the wheel immediately aligns straight with your hands. Zero drift, zero fuss.
+* 🦶 **Pedals That Feel Natural (Slide Upward)**:
+  * **Left Side**: Primary **Brake** pedal (right under your left thumb).
+  * **Right Side**: Primary **Throttle / Gas** pedal (right under your right thumb).
+  * **Natural Slide**: Rest your thumbs at the bottom (0% idle) and slide upward to apply brake or gas (100% full lock). The bar fills upward under your finger just like pushing down on a real pedal!
+* 🔄 **Full 360° Wheel Rotation**:
+  Steer naturally from slight apex adjustments to full hairpins with silky-smooth gyroscope response at any angle.
+* 🚦 **F1 Cockpit Shift Lights & Shifters**:
+  Crisp gear paddle shifters with haptic vibration, rev shift light indicators, and live digital gear readout.
+* 🖥️ **Clean Navy PC Companion**:
+  Emulates a genuine Xbox 360 controller on Windows with zero latency, working seamlessly with **EA Sports F1 25**, **Assetto Corsa**, **Forza Horizon**, and any PC racing game.
 
 ---
 
-## 🚀 Quick Start Guide
+## ⚡ Super Easy Setup (3 Steps)
 
-### Step 1: Install Virtual Controller Driver (One-time)
-Run `install_drivers.bat` (or run `drivers\ViGEmBus.exe`) to install the signed Windows virtual controller driver.
+### 1. Get the Android App
+Download and install [`ApexWheel.apk`](https://github.com/agra-aarav15/ApexWheel-F1/releases) on your phone.
 
-### Step 2: Start the PC Companion Server
-Double-click `start_server.bat` (or run `server\ApexWheelServer.exe`).
-The server will start listening for phone inputs on port `8081` and F1 25 telemetry on port `20777`.
+### 2. Set Up Your PC
+Download the PC files from the [Releases](https://github.com/agra-aarav15/ApexWheel-F1/releases) section:
+* Run **`ApexWheel-PC-Setup.exe`** once to install the virtual controller driver.
+* Double-click **`ApexWheelServer.exe`** — it opens our clean navy dashboard and starts listening automatically.
 
-### Step 3: Connect Your Phone
-- **Option A (APK)**: Install the native Android APK (`android/app/build/outputs/apk/debug/app-debug.apk`) on your phone.
-- **Option B (Browser)**: Open `http://<your-laptop-ip>:8080` in your phone's browser (Chrome or Safari).
-
-### Step 4: Configure F1 25 Telemetry
-Inside F1 25:
-1. Go to **Settings** $\rightarrow$ **Telemetry Settings**.
-2. Set **UDP Telemetry**: `On`.
-3. Set **UDP Port**: `20777`.
-4. Set **UDP Send Rate**: `60Hz`.
-
-Jump into a time trial or race, and feel the wheel in your hands!
+### 3. Connect & Race!
+* Connect your phone and PC to the same Wi-Fi (or plug in a USB cable).
+* Open the app, tap the top **Recenter (`📍`)** button to calibrate your center angle.
+* Launch F1 25 or your favorite racing game, jump into the cockpit, and drive with your whole heart!
 
 ---
 
-## 📁 Repository Structure
+## 🎮 Works With Every Game
 
-```
-F1Wheel/
-├── server/                     # C# PC Companion Server
-│   ├── ApexWheelServer.cs      # Core server with ViGEm + F1 Telemetry + Input bridge
-│   └── ApexWheelServer.exe     # Standalone compiled executable (zero dependencies)
-├── android/                    # Native Android APK Project
-│   ├── app/src/main/           # Native SensorManager + UDP socket + WebView
-│   └── build.gradle            # Gradle build configuration
-├── client-web/                 # F1 Wheel Web Dashboard & PWA
-│   ├── index.html              # Authentic F1 cockpit layout
-│   ├── style.css               # LED rev lights & carbon fiber styling
-│   └── app.js                  # Gyro steering, pedals, and telemetry updater
-├── drivers/                    # Driver installers
-│   └── ViGEmBus.exe            # Official ViGEmBus driver installer
-├── docs/                       # Guides
-│   ├── F1_25_TELEMETRY_SETUP.md
-│   └── USB_TETHERING_GUIDE.md
-├── start_server.bat            # 1-Click companion server launcher
-├── install_drivers.bat         # 1-Click driver installer
-├── LICENSE                     # MIT License
-└── README.md
-```
+Because ApexWheel emulates a standard Xbox 360 controller on Windows, it works instantly with:
+* **EA Sports F1 25 / 24 / 23 / 22**
+* **Assetto Corsa & Assetto Corsa Competizione**
+* **Forza Horizon 5 & Forza Motorsport**
+* **BeamNG.drive**
+* **Automobilista 2, Dirt Rally, Project CARS, and more!**
 
 ---
 
 ## 📄 License
-MIT License. Free to use, customize, and distribute.
+
+This project is proudly licensed under the [MIT License](LICENSE).  
+Free to enjoy, modify, and share with racing fans around the world. Happy racing! 🏁
