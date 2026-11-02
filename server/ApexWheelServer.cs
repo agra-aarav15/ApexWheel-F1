@@ -449,7 +449,10 @@ namespace ApexWheel
             // 1. Primary Gyropad UDP port 5005
             try
             {
-                _udp5005 = new UdpClient(5005);
+                _udp5005 = new UdpClient();
+                _udp5005.ExclusiveAddressUse = false;
+                _udp5005.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+                _udp5005.Client.Bind(new IPEndPoint(IPAddress.Any, 5005));
                 try
                 {
                     _udp5005.Client.ReceiveBufferSize = 2 * 1024 * 1024;
@@ -472,7 +475,10 @@ namespace ApexWheel
             // 2. Web client UDP port 8081
             try
             {
-                _udp8081 = new UdpClient(port);
+                _udp8081 = new UdpClient();
+                _udp8081.ExclusiveAddressUse = false;
+                _udp8081.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+                _udp8081.Client.Bind(new IPEndPoint(IPAddress.Any, port));
                 _thread8081 = new Thread(ListenLoop8081);
                 _thread8081.IsBackground = true;
                 _thread8081.Start();
@@ -508,6 +514,8 @@ namespace ApexWheel
             try
             {
                 _tcpPairServer = new TcpListener(IPAddress.Any, 5007);
+                _tcpPairServer.ExclusiveAddressUse = false;
+                _tcpPairServer.Server.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
                 _tcpPairServer.Start();
                 _threadPair = new Thread(PairServerLoop);
                 _threadPair.IsBackground = true;
@@ -731,15 +739,54 @@ namespace ApexWheel
                         try
                         {
                             client.NoDelay = true;
-                            client.ReceiveTimeout = 2000;
-                            client.SendTimeout = 2000;
+                            client.LingerState = new LingerOption(true, 2);
+                            client.ReceiveTimeout = 4000;
+                            client.SendTimeout = 4000;
+
+                            IPEndPoint remoteEp = null;
+                            try { remoteEp = (IPEndPoint)client.Client.RemoteEndPoint; } catch { }
+
                             using (var stream = client.GetStream())
+                            using (var reader = new StreamReader(stream, Encoding.ASCII))
+                            using (var writer = new StreamWriter(stream, Encoding.ASCII))
                             {
-                                byte[] buf = new byte[256];
-                                int read = stream.Read(buf, 0, buf.Length);
-                                byte[] ok = Encoding.ASCII.GetBytes("OK 123456\n");
-                                stream.Write(ok, 0, ok.Length);
-                                stream.Flush();
+                                writer.NewLine = "\n";
+                                string line = reader.ReadLine();
+                                if (!string.IsNullOrEmpty(line))
+                                {
+                                    line = line.Trim();
+                                    string[] parts = line.Split(' ');
+                                    string cmd = parts.Length > 0 ? parts[0].ToUpperInvariant() : "";
+
+                                    string token = "123456";
+                                    if (parts.Length > 1 && !string.IsNullOrEmpty(parts[1]))
+                                    {
+                                        token = parts[1];
+                                    }
+
+                                    if (cmd == "HELLO")
+                                    {
+                                        writer.WriteLine("OK");
+                                        writer.Flush();
+                                    }
+                                    else
+                                    {
+                                        writer.WriteLine("OK " + token);
+                                        writer.Flush();
+                                    }
+
+                                    if (remoteEp != null)
+                                    {
+                                        lock (_phoneLock)
+                                        {
+                                            _lastPhoneRemote = new IPEndPoint(remoteEp.Address, 5005);
+                                            _lastPhonePacketTicks = Stopwatch.GetTimestamp();
+                                        }
+                                    }
+
+                                    try { client.Client.Shutdown(SocketShutdown.Send); } catch { }
+                                    Thread.Sleep(50);
+                                }
                             }
                         }
                         catch { }
