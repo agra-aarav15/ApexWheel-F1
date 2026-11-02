@@ -421,6 +421,21 @@ namespace ApexWheel
         private long _lastPhonePacketTicks = 0;
         private readonly object _phoneLock = new object();
 
+        public string ConnectedDeviceName { get; private set; }
+
+        public bool IsConnected
+        {
+            get
+            {
+                lock (_phoneLock)
+                {
+                    if (_lastPhoneRemote == null || _lastPhonePacketTicks == 0) return false;
+                    long elapsedSec = (Stopwatch.GetTimestamp() - _lastPhonePacketTicks) / Stopwatch.Frequency;
+                    return elapsedSec < 6;
+                }
+            }
+        }
+
         public double Steer { get; private set; }
         public double Throttle { get; private set; }
         public double Brake { get; private set; }
@@ -719,12 +734,78 @@ namespace ApexWheel
                             var ip = ((IPEndPoint)remoteEP).Address;
                             _udpDiscoveryListener.SendTo(pairAckBytes, new IPEndPoint(ip, 5006));
                             _udpDiscoveryListener.SendTo(announceBytes, new IPEndPoint(ip, 5006));
+
+                            // Fallback reverse TCP pairing: connect back to phone_ip:phonePort
+                            string phoneIp = ip.ToString();
+                            int phonePort = 7507;
+                            string phoneName = "";
+                            string[] pParts = msg.Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                            if (pParts.Length > 2) phoneName = pParts[2];
+                            for (int pi = 2; pi < pParts.Length; pi++)
+                            {
+                                int parsedPort;
+                                if (int.TryParse(pParts[pi], out parsedPort) && parsedPort > 1024 && parsedPort < 65535)
+                                {
+                                    phonePort = parsedPort;
+                                    break;
+                                }
+                            }
+                            RequestPair(phoneIp, phonePort, phoneName);
                         }
                     }
                 }
                 catch (SocketException) { }
                 catch (Exception) { }
             }
+        }
+
+        private void RequestPair(string phoneIp, int phonePort, string phoneName)
+        {
+            new Thread(() =>
+            {
+                try
+                {
+                    string pcName = Environment.MachineName.Replace(" ", "_");
+                    if (string.IsNullOrEmpty(pcName)) pcName = "ApexWheel";
+
+                    using (var tcp = new TcpClient())
+                    {
+                        tcp.NoDelay = true;
+                        tcp.ReceiveTimeout = 4000;
+                        tcp.SendTimeout = 4000;
+
+                        var ar = tcp.BeginConnect(phoneIp, phonePort, null, null);
+                        if (!ar.AsyncWaitHandle.WaitOne(3000))
+                        {
+                            tcp.Close();
+                            return;
+                        }
+                        tcp.EndConnect(ar);
+
+                        using (var stream = tcp.GetStream())
+                        {
+                            byte[] req = Encoding.ASCII.GetBytes("PAIR " + pcName + "\n");
+                            stream.Write(req, 0, req.Length);
+                            stream.Flush();
+
+                            byte[] resp = new byte[256];
+                            int read = stream.Read(resp, 0, resp.Length);
+                            if (read > 0)
+                            {
+                                lock (_phoneLock)
+                                {
+                                    _lastPhoneRemote = new IPEndPoint(IPAddress.Parse(phoneIp), 5005);
+                                    _lastPhonePacketTicks = Stopwatch.GetTimestamp();
+                                    if (!string.IsNullOrEmpty(phoneName))
+                                        ConnectedDeviceName = phoneName;
+                                }
+                            }
+                        }
+                    }
+                }
+                catch { }
+            })
+            { IsBackground = true }.Start();
         }
 
         private void PairServerLoop()
@@ -734,66 +815,73 @@ namespace ApexWheel
                 try
                 {
                     TcpClient client = _tcpPairServer.AcceptTcpClient();
-                    ThreadPool.QueueUserWorkItem((state) =>
+                    new Thread(() => HandleInboundPair(client)) { IsBackground = true }.Start();
+                }
+                catch { }
+            }
+        }
+
+        private void HandleInboundPair(TcpClient client)
+        {
+            try
+            {
+                client.NoDelay = true;
+                client.ReceiveTimeout = 5000;
+                client.SendTimeout = 5000;
+
+                IPEndPoint remoteEp = null;
+                try { remoteEp = (IPEndPoint)client.Client.RemoteEndPoint; } catch { }
+
+                using (var stream = client.GetStream())
+                {
+                    byte[] buf = new byte[1024];
+                    int read = stream.Read(buf, 0, buf.Length);
+                    if (read > 0)
                     {
-                        try
+                        string line = Encoding.ASCII.GetString(buf, 0, read).Trim();
+                        string[] parts = line.Split(' ');
+                        string cmd = parts.Length > 0 ? parts[0].ToUpperInvariant() : "";
+
+                        string token = "123456";
+                        if (parts.Length > 1 && !string.IsNullOrEmpty(parts[1]))
                         {
-                            client.NoDelay = true;
-                            client.LingerState = new LingerOption(true, 2);
-                            client.ReceiveTimeout = 4000;
-                            client.SendTimeout = 4000;
+                            token = parts[1];
+                        }
 
-                            IPEndPoint remoteEp = null;
-                            try { remoteEp = (IPEndPoint)client.Client.RemoteEndPoint; } catch { }
+                        byte[] resp;
+                        if (cmd == "HELLO")
+                        {
+                            resp = Encoding.ASCII.GetBytes("OK\n");
+                        }
+                        else
+                        {
+                            resp = Encoding.ASCII.GetBytes("OK " + token + "\n");
+                        }
 
-                            using (var stream = client.GetStream())
-                            using (var reader = new StreamReader(stream, Encoding.ASCII))
-                            using (var writer = new StreamWriter(stream, Encoding.ASCII))
+                        stream.Write(resp, 0, resp.Length);
+                        stream.Flush();
+
+                        if (remoteEp != null)
+                        {
+                            lock (_phoneLock)
                             {
-                                writer.NewLine = "\n";
-                                string line = reader.ReadLine();
-                                if (!string.IsNullOrEmpty(line))
+                                _lastPhoneRemote = new IPEndPoint(remoteEp.Address, 5005);
+                                _lastPhonePacketTicks = Stopwatch.GetTimestamp();
+                                if (parts.Length > 1 && cmd == "PAIR")
                                 {
-                                    line = line.Trim();
-                                    string[] parts = line.Split(' ');
-                                    string cmd = parts.Length > 0 ? parts[0].ToUpperInvariant() : "";
-
-                                    string token = "123456";
-                                    if (parts.Length > 1 && !string.IsNullOrEmpty(parts[1]))
-                                    {
-                                        token = parts[1];
-                                    }
-
-                                    if (cmd == "HELLO")
-                                    {
-                                        writer.WriteLine("OK");
-                                        writer.Flush();
-                                    }
-                                    else
-                                    {
-                                        writer.WriteLine("OK " + token);
-                                        writer.Flush();
-                                    }
-
-                                    if (remoteEp != null)
-                                    {
-                                        lock (_phoneLock)
-                                        {
-                                            _lastPhoneRemote = new IPEndPoint(remoteEp.Address, 5005);
-                                            _lastPhonePacketTicks = Stopwatch.GetTimestamp();
-                                        }
-                                    }
-
-                                    try { client.Client.Shutdown(SocketShutdown.Send); } catch { }
-                                    Thread.Sleep(50);
+                                    ConnectedDeviceName = parts[1];
                                 }
                             }
                         }
-                        catch { }
-                        finally { try { client.Close(); } catch { } }
-                    });
+
+                        Thread.Sleep(150);
+                    }
                 }
-                catch { }
+            }
+            catch { }
+            finally
+            {
+                try { client.Close(); } catch { }
             }
         }
 
@@ -1028,8 +1116,6 @@ namespace ApexWheel
 
             _input = new PhoneInputReceiver(_vigem);
             _input.Start(8081);
-
-            CheckUsbForward();
 
             // 2. Window Setup
             WindowStyle = WindowStyle.None;
@@ -1687,12 +1773,13 @@ Enable in F1 25: Settings -> Telemetry -> UDP On (Port 20777)",
             }
 
             // 7. Status Banner & Pill
-            bool connected = _input.PacketsReceived > 0;
+            bool connected = _input.IsConnected || _input.PacketsReceived > 0;
             if (_txtStatus != null && _dotStatus != null)
             {
                 _dotStatus.Fill = connected ? new SolidColorBrush(Color.FromRgb(16, 185, 129)) : new SolidColorBrush(Color.FromRgb(245, 158, 11));
+                string devName = string.IsNullOrEmpty(_input.ConnectedDeviceName) ? "PHONE" : _input.ConnectedDeviceName;
                 _txtStatus.Text = connected ?
-                    string.Format("CONNECTED: ASUS PC COMPANION • {0} INPUTS", _input.PacketsReceived) :
+                    string.Format("CONNECTED: {0} • {1} INPUTS", devName, _input.PacketsReceived) :
                     "READY • WAITING FOR APEXWHEEL APP (PORT 5005 / 5006)";
                 _txtStatus.Foreground = connected ? Brushes.White : new SolidColorBrush(Color.FromRgb(148, 163, 184));
             }
@@ -1797,15 +1884,15 @@ Enable in F1 25: Settings -> Telemetry -> UDP On (Port 20777)",
                 Process p = new Process();
                 p.StartInfo.FileName = "adb.exe";
                 p.StartInfo.Arguments = "reverse tcp:8080 tcp:8080";
-                p.StartInfo.UseShellExecute = false;
-                p.StartInfo.CreateNoWindow = true;
+                p.StartInfo.UseShellExecute = true;
+                p.StartInfo.WindowStyle = ProcessWindowStyle.Hidden;
                 p.Start();
 
                 Process p2 = new Process();
                 p2.StartInfo.FileName = "adb.exe";
                 p2.StartInfo.Arguments = "reverse udp:8081 udp:8081";
-                p2.StartInfo.UseShellExecute = false;
-                p2.StartInfo.CreateNoWindow = true;
+                p2.StartInfo.UseShellExecute = true;
+                p2.StartInfo.WindowStyle = ProcessWindowStyle.Hidden;
                 p2.Start();
             }
             catch { }
